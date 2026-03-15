@@ -1,0 +1,38 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "char-counter",
+  "owner": {
+    "name": "ronen",
+    "email": ""
+  },
+  "metadata": {
+    "description": "Counts characters in files after every edit, displayed in the status line.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "char-counter",
+      "description": "Counts characters in files after every edit. Reports total chars, non-whitespace chars, and line count in the status line automatically via PostToolUse hook.",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/char-counter"
+      ],
+      "hooks": {
+        "PostToolUse": [
+          {
+            "matcher": "Edit|Write|MultiEdit",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "python3 $PLUGIN_DIR/hooks/count_chars.py",
+                "timeout": 5,
+                "statusMessage": "Counting characters..."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
