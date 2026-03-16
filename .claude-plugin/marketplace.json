@@ -1,6 +1,6 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "char-counter",
+  "name": "loci-plugin",
   "owner": {
     "name": "ronen",
     "email": ""
@@ -11,7 +11,7 @@
   },
   "plugins": [
     {
-      "name": "char-counter",
+      "name": "loci-plugin",
       "description": "Counts characters in files after every edit. Reports total chars, non-whitespace chars, and line count in the status line automatically via PostToolUse hook.",
       "source": "./",
       "strict": false,
