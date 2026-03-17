@@ -1,0 +1,23 @@
+{
+  "skill_name": "loci-post-review",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "The agent just wrote this function. Please review it:\n\n```cpp\nvoid processBuffer(unsigned char* buf, size_t len) {\n    size_t remaining = len - 1;\n    for (size_t i = 0; i < remaining; i++) {\n        buf[i] = buf[i] ^ buf[i+1];\n    }\n    delete buf;\n    char* next = (char*)buf;\n    next[0] = 0;\n}\n```",
+      "expected_output": "A post-review report covering all three checks for processBuffer, flagging the unsigned wrap risk on `len - 1` when len==0, and blocking on use-after-free (buf accessed after delete). Verdict should be REVERT.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "I just had Claude add a helper function to my codebase. Can you review what it wrote?\n\n```cpp\nint sumProducts(int a, int b, int c) {\n    return a * b + b * c + a * c;\n}\n```",
+      "expected_output": "A post-review report noting the potential signed integer overflow risk on the multiplications. Verdict should be FLAG with a note about overflow if inputs are large.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "The code agent finished its edits. Review the change:\n\n```cpp\nstd::string& getLabel(bool flag) {\n    std::string result = flag ? \"active\" : \"idle\";\n    return result;\n}\n```",
+      "expected_output": "A post-review report blocking on the dangling reference — returning reference to a local string. Verdict should be REVERT.",
+      "files": []
+    }
+  ]
+}
