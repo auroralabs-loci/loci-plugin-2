@@ -1,0 +1,47 @@
+{
+  "_comment": "Eval runner configuration. Adjust paths for your local environment.",
+
+  "binary": {
+    "path": "/home/melisa/BLE",
+    "type": "elf",
+    "arch": "arm-cortex-m",
+    "build_dir": "/home/melisa/BLE",
+    "source_root": "/home/melisa/BLE"
+  },
+
+  "project": {
+    "repo_path": "/home/melisa/BLE",
+    "evals_repo_path": "/home/melisa/loci-plugin-2",
+    "output_dir": "/home/melisa/loci-plugin-2/evals/results"
+  },
+
+  "loci_mcp": {
+    "enabled": true,
+    "server_url": "https://dev.mcp.loci-dev.net/mcp",
+    "timeout_seconds": 30
+  },
+
+  "eval_runner": {
+    "modes": ["preflight", "after_edit"],
+    "default_mode": "preflight",
+    "parallel_runs": false,
+    "save_transcripts": true,
+    "transcript_dir": "/home/melisa/loci-plugin-2/evals/results/transcripts"
+  },
+
+  "example_config_for_different_project": {
+    "_note": "Copy this block and adjust for a different binary/project",
+    "binary": {
+      "path": "/home/user/binaries/my_binary.elf",
+      "type": "elf",
+      "arch": "arm-cortex-m",
+      "build_dir": "/home/user/repos/my-project/build",
+      "source_root": "/home/user/repos/my-project/src"
+    },
+    "project": {
+      "repo_path": "/home/user/repos/my-project",
+      "evals_repo_path": "/home/user/repos/loci-evals",
+      "output_dir": "/home/user/repos/loci-evals/results"
+    }
+  }
+}

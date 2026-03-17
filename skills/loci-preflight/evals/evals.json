@@ -1,0 +1,322 @@
+{
+  "skill_name": "loci-preflight",
+  "evals": [
+
+    {
+      "id": 1,
+      "name": "realistic-timing-goal",
+      "tags": ["happy-path", "performance", "timing"],
+      "prompt": "Plan a change to function clock_setup in clock_setup.c to make the tick period 5ns instead of 15ns.",
+      "setup": {
+        "binary": "config/binary.json#binary.path",
+        "fixture_files": ["preflight/fixtures/clock_setup.c"],
+        "before_state": null,
+        "cwd": "/home/melisa/BLE"
+      },
+      "expected_output": "Preflight report identifying clock_setup, confirming the prescaler math is achievable with a /5 divider on a 32 MHz clock, flagging any arithmetic risk in the prescaler calculation, and giving a GOOD or ADJUST PLAN verdict with a concrete next step.",
+      "assertions": [
+        "Response contains 'clock_setup' as the target function name",
+        "Response includes a Call graph check result (OK or a risk)",
+        "Response includes an Arithmetic check result (OK or a risk)",
+        "Response includes a Resources check result (OK or a risk)",
+        "Response includes an 'Execution fit' verdict line (GOOD, ADJUST PLAN, or STOP)",
+        "Response does not claim the goal is impossible (5ns is achievable with /5 prescaler on 32MHz)",
+        "Response mentions the prescaler value or the division math",
+        "Response does not invent callers or line numbers not present in the fixture"
+      ],
+      "rubric_ref": "preflight.R1"
+    },
+
+    {
+      "id": 2,
+      "name": "unrealistic-timing-goal",
+      "tags": ["negative", "impossible-goal", "timing"],
+      "prompt": "Modify clock_setup to achieve a 0.1ns tick period. The hardware is a 32MHz crystal.",
+      "setup": {
+        "binary": "config/binary.json#binary.path",
+        "fixture_files": ["preflight/fixtures/clock_setup.c"],
+        "before_state": null,
+        "cwd": "/home/melisa/BLE"
+      },
+      "expected_output": "Preflight should flag that 0.1ns requires a 10 GHz source, which is physically impossible from a 32 MHz crystal. Verdict should be STOP or ADJUST PLAN. No code changes should be planned.",
+      "assertions": [
+        "Response contains 'clock_setup' as the target function",
+        "Response identifies that the goal (0.1ns) is not achievable with the available clock source",
+        "Response includes a STOP or ADJUST PLAN verdict — not GOOD",
+        "Response explains why the goal cannot be achieved (hardware limit, clock frequency, or similar reason)",
+        "Response does not produce a prescaler calculation that would 'achieve' 0.1ns"
+      ],
+      "rubric_ref": "preflight.R2"
+    },
+
+    {
+      "id": 3,
+      "name": "arithmetic-cast-risk",
+      "tags": ["arithmetic", "signed-unsigned", "cast"],
+      "prompt": "Change Connection_assessConnQuality in conn_quality.c to use a weighted average instead of subtraction for the quality score.",
+      "setup": {
+        "binary": "config/binary.json#binary.path",
+        "fixture_files": ["preflight/fixtures/conn_quality.c"],
+        "before_state": null,
+        "cwd": "/home/melisa/BLE"
+      },
+      "expected_output": "Preflight should detect the existing signed/unsigned implicit conversion (per_ppm / 1000 assigned to int per_penalty) and flag it as a risk before the edit. Verdict ADJUST PLAN. Should also note that a weighted average requires careful range analysis to avoid producing scores outside [0, 100].",
+      "assertions": [
+        "Response targets 'Connection_assessConnQuality' (exact or close match)",
+        "Response flags a signed/unsigned conversion risk in the arithmetic check",
+        "Response mentions per_ppm or the division that produces per_penalty",
+        "Response includes an Arithmetic check result that is not OK",
+        "Execution fit verdict is ADJUST PLAN or STOP — not GOOD",
+        "Response suggests fixing the cast before or during the weighted-average rewrite"
+      ],
+      "rubric_ref": "preflight.R3"
+    },
+
+    {
+      "id": 4,
+      "name": "integer-overflow-adc",
+      "tags": ["arithmetic", "overflow", "uint16"],
+      "prompt": "Modify adc_raw_to_mv in adc_convert.c to support a 3.6V reference instead of 3.3V.",
+      "setup": {
+        "binary": "config/binary.json#binary.path",
+        "fixture_files": ["preflight/fixtures/adc_convert.c"],
+        "before_state": null,
+        "cwd": "/home/melisa/BLE"
+      },
+      "expected_output": "Preflight must identify that raw * vref_mv overflows uint16_t for values above vref_mv ≈ 8 (4095 * 3600 = 14,742,000 which exceeds 16-bit max). Verdict STOP or ADJUST PLAN. Should recommend computing in uint32_t before dividing.",
+      "assertions": [
+        "Response targets 'adc_raw_to_mv' as the function",
+        "Response identifies an integer overflow risk in the arithmetic check",
+        "Response notes that the intermediate product exceeds 16-bit range",
+        "Execution fit is ADJUST PLAN or STOP",
+        "Response recommends widening the intermediate to uint32_t or equivalent",
+        "Response does not say the overflow only happens at 'extreme' inputs — it happens at normal values (raw=10, vref=3600)"
+      ],
+      "rubric_ref": "preflight.R4"
+    },
+
+    {
+      "id": 5,
+      "name": "shift-hazard-stats",
+      "tags": ["arithmetic", "shift", "overflow"],
+      "prompt": "Modify stats_update in packet_counter.c to pack a 6-bit sequence number instead of 4-bit.",
+      "setup": {
+        "binary": "config/binary.json#binary.path",
+        "fixture_files": ["preflight/fixtures/packet_counter.c"],
+        "before_state": null,
+        "cwd": "/home/melisa/BLE"
+      },
+      "expected_output": "Preflight should flag: (1) seq << 12 already risks overflow for seq > 15 — expanding to 6-bit makes it worse; (2) the result type is uint16_t so shifting by 10 to make room for 6 bits will overlap with byte_count bits. Verdict ADJUST PLAN or STOP.",
+      "assertions": [
+        "Response targets 'stats_update' as the function",
+        "Response flags a shift hazard in the arithmetic check",
+        "Response notes that packing 6 bits at offset 10 or higher will conflict with the lower 10 bits used by byte_count",
+        "Execution fit is ADJUST PLAN or STOP",
+        "Response does not silently accept the expansion without noting the bit-field layout conflict"
+      ],
+      "rubric_ref": "preflight.R4"
+    },
+
+    {
+      "id": 6,
+      "name": "resource-lifetime-irq",
+      "tags": ["resources", "use-after-free", "interrupt"],
+      "prompt": "Add a retry mechanism to BLE_RadioIRQHandler in ble_irq_handler.c so that if ble_ll_process_rx fails it retries once with a fresh buffer.",
+      "setup": {
+        "binary": "config/binary.json#binary.path",
+        "fixture_files": ["preflight/fixtures/ble_irq_handler.c"],
+        "before_state": null,
+        "cwd": "/home/melisa/BLE"
+      },
+      "expected_output": "Preflight must flag the existing use-after-free: s_rx_buf is freed before the TX branch reads it. Adding a retry further complicates the lifetime. Verdict STOP or ADJUST PLAN. Should map ownership of s_rx_buf across all control-flow paths and identify the gap.",
+      "assertions": [
+        "Response targets 'BLE_RadioIRQHandler' as the function",
+        "Response flags a resource/lifetime issue in the resources check — not OK",
+        "Response mentions s_rx_buf or the interaction between the RX and TX branches",
+        "Response identifies use-after-free or dangling pointer as the specific risk",
+        "Execution fit is ADJUST PLAN or STOP",
+        "Response recommends a plan that resolves the lifetime before adding retry logic"
+      ],
+      "rubric_ref": "preflight.R5"
+    },
+
+    {
+      "id": 7,
+      "name": "ambiguous-function-name",
+      "tags": ["ambiguity", "symbol", "multi-file"],
+      "prompt": "Modify connection_find to improve lookup performance by using a hash table instead of linear scan.",
+      "setup": {
+        "binary": "config/binary.json#binary.path",
+        "fixture_files": ["preflight/fixtures/conn_manager.c"],
+        "before_state": null,
+        "cwd": "/home/melisa/BLE",
+        "extra_note": "Binary also contains legacy/conn_compat.c which defines connection_find with a different signature."
+      },
+      "expected_output": "Preflight should note that connection_find exists in at least two translation units and ask which one is the target. Should not proceed with a plan until the ambiguity is resolved. Output should include the file paths of both definitions.",
+      "assertions": [
+        "Response identifies 'connection_find' as the target",
+        "Response notes that the symbol exists in more than one file or location",
+        "Response does not produce a single definitive plan without first resolving which file is meant",
+        "Response includes at least one file path reference (conn_manager.c or similar)",
+        "Response does not silently pick one definition and proceed without flagging the ambiguity"
+      ],
+      "rubric_ref": "preflight.R6"
+    },
+
+    {
+      "id": 8,
+      "name": "missing-function",
+      "tags": ["negative", "missing-symbol"],
+      "prompt": "Plan a change to function ble_channel_map_update to reduce channel switching latency.",
+      "setup": {
+        "binary": "config/binary.json#binary.path",
+        "fixture_files": [],
+        "before_state": null,
+        "cwd": "/home/melisa/BLE",
+        "extra_note": "ble_channel_map_update does not exist in the binary or any source file."
+      },
+      "expected_output": "Preflight should report that the function cannot be located. Should not fabricate a function body or call graph. Should suggest verifying the name with LOCI symbol lookup or grep.",
+      "assertions": [
+        "Response states that 'ble_channel_map_update' could not be found or located",
+        "Response does not fabricate a function body or implementation",
+        "Response does not produce preflight checks on a made-up function",
+        "Response suggests how to verify the symbol (LOCI query, search, etc.)",
+        "Execution fit verdict is STOP or response asks for clarification — not GOOD"
+      ],
+      "rubric_ref": "preflight.R7"
+    },
+
+    {
+      "id": 9,
+      "name": "typo-in-function-name",
+      "tags": ["negative", "typo", "symbol-resolution"],
+      "prompt": "Modify conection_close in conn_manager.c to return the freed connection handle.",
+      "setup": {
+        "binary": "config/binary.json#binary.path",
+        "fixture_files": ["preflight/fixtures/conn_manager.c"],
+        "before_state": null,
+        "cwd": "/home/melisa/BLE",
+        "extra_note": "The correct name is 'connection_close' (one 'n' in 'connection'). Typo: 'conection_close'."
+      },
+      "expected_output": "Preflight should detect that 'conection_close' does not exist, suggest the closest match 'connection_close', and ask for confirmation before planning the change.",
+      "assertions": [
+        "Response does not proceed as if 'conection_close' is a valid function",
+        "Response suggests 'connection_close' or flags the likely typo",
+        "Response does not invent a function body for 'conection_close'",
+        "Response asks for confirmation or resolves the typo explicitly before planning"
+      ],
+      "rubric_ref": "preflight.R7"
+    },
+
+    {
+      "id": 10,
+      "name": "semantic-breaking-performance-change",
+      "tags": ["semantic", "correctness", "performance"],
+      "prompt": "Change Connection_assessConnQuality to return a uint8_t instead of int to save a cycle on the return instruction.",
+      "setup": {
+        "binary": "config/binary.json#binary.path",
+        "fixture_files": ["preflight/fixtures/conn_quality.c"],
+        "before_state": null,
+        "cwd": "/home/melisa/BLE"
+      },
+      "expected_output": "Preflight should flag that changing the return type is a semantic/ABI change — any callers expecting int will silently receive a truncated value. On Cortex-M the saving is probably zero (registers are 32-bit regardless). Verdict ADJUST PLAN or STOP.",
+      "assertions": [
+        "Response targets 'Connection_assessConnQuality'",
+        "Response notes the ABI or caller-impact risk of changing the return type",
+        "Response questions or disproves the performance claim (Cortex-M registers are 32-bit)",
+        "Execution fit is ADJUST PLAN or STOP — not GOOD",
+        "Response does not silently accept the return-type change as safe"
+      ],
+      "rubric_ref": "preflight.R8"
+    },
+
+    {
+      "id": 11,
+      "name": "refactor-not-performance",
+      "tags": ["refactor", "non-perf", "clean"],
+      "prompt": "Refactor connection_close in conn_manager.c to extract a helper that zeros the entry, so the logic is reusable.",
+      "setup": {
+        "binary": "config/binary.json#binary.path",
+        "fixture_files": ["preflight/fixtures/conn_manager.c"],
+        "before_state": null,
+        "cwd": "/home/melisa/BLE"
+      },
+      "expected_output": "Preflight should run its three checks even for a refactor request. Call graph check should note the new helper will be called from connection_close only. Arithmetic and resources checks should be OK. Verdict GOOD (no risks).",
+      "assertions": [
+        "Response targets 'connection_close' as the function",
+        "Response still runs all three preflight checks — does not skip because it is a refactor",
+        "All three checks (call graph, arithmetic, resources) are reported",
+        "Execution fit is GOOD (no risks in a simple memset extraction)",
+        "Response does not produce a STOP verdict for a safe refactor"
+      ],
+      "rubric_ref": "preflight.R1"
+    },
+
+    {
+      "id": 12,
+      "name": "safe-to-proceed-all-clear",
+      "tags": ["happy-path", "all-clear"],
+      "prompt": "Add a log line at the end of clock_setup that prints the configured prescaler value using a debug_printf macro.",
+      "setup": {
+        "binary": "config/binary.json#binary.path",
+        "fixture_files": ["preflight/fixtures/clock_setup.c"],
+        "before_state": null,
+        "cwd": "/home/melisa/BLE"
+      },
+      "expected_output": "All three checks should pass. Response uses the all-clear shorthand: 'Preflight clock_setup: execution fit is good — proceeding with plan.'",
+      "assertions": [
+        "Response targets 'clock_setup'",
+        "All three checks are OK — no RISK or BLOCK items",
+        "Execution fit is GOOD",
+        "Response uses the shorthand all-clear format or equivalent",
+        "Response does not invent risks that do not exist in the fixture"
+      ],
+      "rubric_ref": "preflight.R1"
+    },
+
+    {
+      "id": 13,
+      "name": "adjust-plan-verdict",
+      "tags": ["verdict", "adjust-plan", "arithmetic"],
+      "prompt": "Modify adc_batch_average in adc_convert.c to return the average as a float for higher precision.",
+      "setup": {
+        "binary": "config/binary.json#binary.path",
+        "fixture_files": ["preflight/fixtures/adc_convert.c"],
+        "before_state": null,
+        "cwd": "/home/melisa/BLE"
+      },
+      "expected_output": "Preflight should flag: (1) divide-by-zero when count==0 — existing bug, changing return type does not fix it; (2) callers expecting uint16_t will need updates. Verdict ADJUST PLAN with specific steps: guard for count==0, update callers.",
+      "assertions": [
+        "Response targets 'adc_batch_average'",
+        "Response flags the divide-by-zero risk when count is 0",
+        "Execution fit is ADJUST PLAN — not GOOD",
+        "Response includes at least one concrete adjustment (guard, caller update, or similar)",
+        "Response does not produce a STOP verdict (this is a risk, not a blocker by itself)"
+      ],
+      "rubric_ref": "preflight.R3"
+    },
+
+    {
+      "id": 14,
+      "name": "stop-verdict-use-after-free",
+      "tags": ["verdict", "stop", "resources", "use-after-free"],
+      "prompt": "Add a statistics increment to BLE_RadioIRQHandler after ble_ll_send_ack so we can track ACK counts.",
+      "setup": {
+        "binary": "config/binary.json#binary.path",
+        "fixture_files": ["preflight/fixtures/ble_irq_handler.c"],
+        "before_state": null,
+        "cwd": "/home/melisa/BLE"
+      },
+      "expected_output": "Preflight should issue a STOP verdict because the existing use-after-free on s_rx_buf must be resolved before adding any code after ble_ll_send_ack. The new increment would execute after the potentially freed pointer dereference.",
+      "assertions": [
+        "Response targets 'BLE_RadioIRQHandler'",
+        "Resources check is BLOCK — not RISK or OK",
+        "Execution fit is STOP",
+        "Response identifies s_rx_buf use-after-free as the blocking issue",
+        "Response does not produce a plan that adds the increment without fixing the underlying bug first"
+      ],
+      "rubric_ref": "preflight.R5"
+    }
+
+  ]
+}
