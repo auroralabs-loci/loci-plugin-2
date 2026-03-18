@@ -32,7 +32,7 @@
       "id": 2,
       "should_trigger": false,
       "category": "read-understand",
-      "prompt": "/plan Explain what connection_find does and list its callers.",
+      "prompt": "Explain what connection_find does and list its callers.",
       "expected_output": "A read-only explanation of the function — no preflight block.",
       "files": [],
       "assertions": [
@@ -145,7 +145,7 @@
       "id": 9,
       "should_trigger": false,
       "category": "search-callers",
-      "prompt": "/plan Show me all callers of GAPBondMgr_ProcessEvent in the BLE project.",
+      "prompt": "Show me all callers of GAPBondMgr_ProcessEvent in the BLE project.",
       "expected_output": "A list of callers found by searching the codebase — no preflight block.",
       "files": [],
       "assertions": [
