@@ -1,0 +1,153 @@
+{
+  "skill_name": "loci-preflight",
+  "description": "Eight paired positive/negative scenarios — one with risk and one without — for each of the three checks (call graph, arithmetic, resources) plus execution fit. Every prompt uses a function compiled into $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out so asm-analyze can run on the real binary. The point is to verify the skill correctly distinguishes risk from no-risk for each parameter.",
+  "note": "Set $LOCI_TEST_BLE_ROOT to your local BLE project root before running.",
+
+  "evals": [
+
+    {
+      "id": 1,
+      "should_trigger": true,
+      "category": "call-graph-RISK",
+      "prompt": "Add a call to osal_msg_allocate at the top of osal_set_event in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/osal/src/common/osal.c to pre-allocate a log entry for the event before posting it. osal_set_event is called from interrupt context on the BLE stack and must return in under 5μs at 48 MHz.",
+      "expected_output": "Call graph RISK: osal_msg_allocate calls osal_mem_alloc which is non-deterministic inside an interrupt-context function with a 5μs budget. Also, osal_set_event already contains indirect calls (blx r0, blx r1) — adding a heap allocation call further deepens the latency risk. Execution fit ADJUST PLAN or STOP.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Preflight call graph section shows a risk (⚠ or ✗), not OK",
+          "description": "Adding a heap-allocating callee inside an interrupt-context function with a timing budget is a call graph risk"
+        },
+        {
+          "text": "Preflight Execution fit is ADJUST PLAN or STOP",
+          "description": "A call graph risk on an interrupt-context function cannot be GOOD"
+        }
+      ]
+    },
+
+    {
+      "id": 2,
+      "should_trigger": true,
+      "category": "call-graph-OK",
+      "prompt": "Add a single-instruction guard at the top of osal_set_event in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/osal/src/common/osal.c that returns immediately if a global uint8_t osalShutdownFlag is non-zero. No new function calls, no allocation — just a load and branch.",
+      "expected_output": "Call graph OK: the change introduces no new callees. The existing indirect calls in osal_set_event's CFG are pre-existing and unchanged. No latency, no call-order assumption, no missing declaration.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Preflight call graph section shows OK, not a risk",
+          "description": "A guard that adds no new callees must not produce a call graph risk — the skill must not hallucinate issues"
+        }
+      ]
+    },
+
+    {
+      "id": 3,
+      "should_trigger": true,
+      "category": "arithmetic-RISK",
+      "prompt": "Add a per-task bitmask check inside osal_set_event in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/osal/src/common/osal.c — before posting, compute allowedMask = (1U << taskID) and skip if the corresponding bit in a global uint32_t osalAllowedTasks is clear. taskID is the uint8_t parameter passed into osal_set_event and is not range-checked before this point.",
+      "expected_output": "Arithmetic RISK: 1U << taskID is undefined behavior when taskID >= 32 (the bit-width of uint32_t). taskID is a uint8_t that can be 0–255, so values 32–255 produce UB. The skill must flag this as a shift hazard and require a bounds check on taskID before the shift.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Preflight arithmetic section shows a risk (⚠ or ✗), not OK",
+          "description": "Shifting by an unvalidated external uint8_t that can reach 32+ is a shift hazard"
+        },
+        {
+          "text": "Preflight arithmetic section mentions shift hazard or that the shift amount can reach or exceed the bit-width of the type",
+          "description": "SKILL.md arithmetic: 'shift amount >= bit-width of the type' is the specific hazard that must be named"
+        }
+      ]
+    },
+
+    {
+      "id": 4,
+      "should_trigger": true,
+      "category": "arithmetic-OK",
+      "prompt": "Add a success counter inside HCI_SendDataPkt in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/hci/cc26xx/hci.c that increments a static uint32_t hciSentPktCount by 1 each time the function returns success. The counter wraps silently when it reaches UINT32_MAX.",
+      "expected_output": "Arithmetic OK: incrementing a uint32_t counter by 1 is unsigned addition. The wrap-at-UINT32_MAX behavior is intentional and documented in the prompt — it is not a bug. No overflow risk, no shift, no signed/unsigned mix, no array index.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Preflight arithmetic section shows OK, not a risk",
+          "description": "Incrementing a uint32_t counter by 1 with intentional wrap is not an arithmetic hazard — the skill must not flag benign counter increments"
+        }
+      ]
+    },
+
+    {
+      "id": 5,
+      "should_trigger": true,
+      "category": "resources-RISK",
+      "prompt": "Refactor GAPBondMgr_Init in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/host/gapbondmgr.c to allocate a bond shadow table at startup: pShadow = osal_mem_alloc(numBonds * sizeof(gattCharCfg_t)). After the allocation, call GAPBondMgr_Register to register the GATT service. If GAPBondMgr_Register fails, return FAILURE immediately without freeing pShadow.",
+      "expected_output": "Resources RISK: pShadow is allocated before GAPBondMgr_Register is called. The early return on failure leaks pShadow — it is never freed on that path. The skill must flag this as a RAII gap and require that pShadow is freed before returning on the error path.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Preflight resources section shows a risk (⚠ or ✗), not OK",
+          "description": "An allocated pointer that is not freed on an early-return error path is a RAII gap"
+        },
+        {
+          "text": "Preflight resources section flags that pShadow (or the allocated buffer) is not freed on the GAPBondMgr_Register failure path",
+          "description": "SKILL.md resources: 'RAII gap: if a resource is acquired mid-function, does every exit path release it?'"
+        }
+      ]
+    },
+
+    {
+      "id": 6,
+      "should_trigger": true,
+      "category": "resources-OK",
+      "prompt": "Add a uint32_t local variable eventTimestamp inside osal_set_event in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/osal/src/common/osal.c that captures the current tick count at entry using Clock_getTicks() and is used only within the function to compute elapsed time. No heap allocation, no pointers stored outside the stack frame.",
+      "expected_output": "Resources OK: eventTimestamp is a stack-local uint32_t — it is automatically released when the function returns on any path. There is no heap allocation, no pointer stored beyond the stack frame, and no resource lifetime to manage.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Preflight resources section shows OK, not a risk",
+          "description": "A stack-local variable with automatic lifetime has no resource hazard — the skill must not flag stack variables as resource risks"
+        }
+      ]
+    },
+
+    {
+      "id": 7,
+      "should_trigger": true,
+      "category": "execution-fit-GOOD",
+      "prompt": "Add a static uint32_t hciTxBytes counter inside HCI_SendDataPkt in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/hci/cc26xx/hci.c that accumulates the dataLen parameter on each successful send. dataLen is already validated by the caller as a uint8_t bounded to 0–251 by the BLE spec, and the counter wraps silently.",
+      "expected_output": "All three checks OK: no new callees (call graph OK), bounded uint8_t addition to a uint32_t with intentional wrap (arithmetic OK), stack-local accumulation with no heap (resources OK). Execution fit must be GOOD.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Preflight Execution fit is GOOD",
+          "description": "No call graph risk, no arithmetic risk, no resource risk — execution fit must be GOOD, not ADJUST PLAN"
+        },
+        {
+          "text": "Preflight call graph, arithmetic, and resources lines all show OK",
+          "description": "The skill must confirm each check is clean and not invent issues for a simple accumulator"
+        }
+      ]
+    },
+
+    {
+      "id": 8,
+      "should_trigger": true,
+      "category": "execution-fit-ADJUST-PLAN",
+      "prompt": "Add a bond validation step inside HCI_SendDataPkt in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/hci/cc26xx/hci.c: (1) allocate a lookup buffer with osal_msg_allocate to hold the bond query result, (2) call GAPBondMgr_FindAddr to check bond status, and (3) free the buffer if the peer is not bonded and return HCI_ERROR_CODE_CONN_TERM_BY_LOCAL_HOST. HCI_SendDataPkt must complete within 10μs at 48 MHz.",
+      "expected_output": "Multiple risks across all three checks: call graph RISK (GAPBondMgr_FindAddr violates 10μs timing budget), arithmetic — no specific range risk from this combination, resources RISK (lookup buffer is not freed on the success path — only freed on not-bonded path). Execution fit ADJUST PLAN or STOP.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Preflight Execution fit is ADJUST PLAN or STOP",
+          "description": "At least two checks have risks — execution fit cannot be GOOD"
+        },
+        {
+          "text": "Preflight call graph section flags a timing or latency risk from GAPBondMgr_FindAddr on the 10μs budget",
+          "description": "Call graph risk from adding an NV-reading callee on a timing-critical path"
+        },
+        {
+          "text": "Preflight resources section flags a resource leak — the lookup buffer is not freed on the path where the peer is bonded",
+          "description": "RAII gap: buffer allocated before the bond check is only freed on one of the two exit paths"
+        }
+      ]
+    }
+
+  ]
+}

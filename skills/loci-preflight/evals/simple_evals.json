@@ -1,29 +1,29 @@
 {
   "skill_name": "loci-preflight",
   "description": "Tests skill invocation on real BLE project prompts. Positive cases: plan/implement/modify/add keywords, or any plan involving new logic. Negative cases: read-only, explain, search, build ops.",
-  "ble_project_path": "/home/melisa/BLE",
+  "note": "Prompts use $LOCI_TEST_BLE_ROOT — set this env var to your local BLE project root before running.",
 
   "evals": [
 
     {
       "id": 1,
       "should_trigger": true,
-      "category": "plan-add",
-      "prompt": "/plan Add a safe_divide(uint32_t a, uint32_t b) function that returns a / b, or 0 if b is zero.",
-      "expected_output": "A plan that includes a preflight report covering call graph, arithmetic ranges, and freed-resource access as a section before the edit steps.",
+      "category": "timing-budget",
+      "prompt": "I want to add a call to GAPBondMgr_FindAddr at the top of HCI_SendDataPkt in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/hci/cc26xx/hci.c to verify the peer is bonded before sending data. The HCI data path must complete within 10μs at 48 MHz (480 cycles total). Both functions are compiled into $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out. Will adding the bond check keep us within budget?",
+      "expected_output": "A preflight report where the skill runs asm-analyze extract-cfg on GAPBondMgr_FindAddr from basic_ble.out and flags a latency risk: GAPBondMgr_FindAddr performs NV storage reads and RPA resolution loop iterations, which cannot complete within a 480-cycle budget. Execution fit should be ADJUST PLAN or STOP.",
       "files": [],
       "assertions": [
         {
-          "text": "Response includes a '## Preflight:' section header or 'Preflight safe_divide:' shorthand",
-          "description": "Skill must emit a preflight report when planning new function logic"
+          "text": "Response includes a preflight report section",
+          "description": "Adding a new callee to a timing-constrained function requires preflight"
         },
         {
-          "text": "Response includes an 'Arithmetic:' check in the preflight output",
-          "description": "Division-by-zero is the key arithmetic risk; skill should explicitly clear or flag it"
+          "text": "Preflight call graph section flags a latency or timing risk — GAPBondMgr_FindAddr involves NV lookups or RPA resolution that would violate the 10μs / 480-cycle budget",
+          "description": "The skill must surface the hot-path latency concern from the CFG analysis of GAPBondMgr_FindAddr"
         },
         {
-          "text": "The preflight section appears before any code or edit steps",
-          "description": "Skill specifies: emit the report before describing what you will write"
+          "text": "Preflight Execution fit is ADJUST PLAN or STOP, not GOOD",
+          "description": "An NV-reading callee on a sub-10μs HCI data path is not safe without a plan adjustment"
         }
       ]
     },
@@ -32,12 +32,12 @@
       "id": 2,
       "should_trigger": false,
       "category": "read-understand",
-      "prompt": "Explain what connection_find does and list its callers.",
-      "expected_output": "A read-only explanation of the function — no preflight block.",
+      "prompt": "Explain what GAPBondMgr_FindAddr does in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/host/gapbondmgr.c and describe what each parameter means.",
+      "expected_output": "A read-only explanation of the function and its parameters — no preflight block.",
       "files": [],
       "assertions": [
         {
-          "text": "Response does NOT include a '## Preflight:' section or 'Preflight connection_find:' line",
+          "text": "Response does NOT include a '## Preflight:' section or 'Preflight GAPBondMgr_FindAddr:' line",
           "description": "Read-only request — no new logic is being written, skill should stay quiet"
         }
       ]
@@ -47,7 +47,7 @@
       "id": 3,
       "should_trigger": true,
       "category": "implement-keyword",
-      "prompt": "Implement a retry loop inside HCI_SendDataPkt in /home/melisa/BLE/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/hci/cc26xx/hci.c that retries up to 3 times if the connection handle is invalid before returning an error.",
+      "prompt": "Implement a retry loop inside HCI_SendDataPkt in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/hci/cc26xx/hci.c that retries up to 3 times if the connection handle is invalid before returning an error.",
       "expected_output": "A preflight report covering call graph ordering, arithmetic ranges (loop counter, retry count), and resource access — followed by the implementation plan.",
       "files": [],
       "assertions": [
@@ -66,7 +66,7 @@
       "id": 4,
       "should_trigger": true,
       "category": "modify-keyword",
-      "prompt": "How should I modify Connection_getConnIndex in /home/melisa/BLE/examples/rtos/LP_EM_CC2340R53/ble5stack/basic_ble_profiles/app/app_connection.c to return -1 instead of 0 when no connection is found, so callers can distinguish between index 0 and not-found?",
+      "prompt": "How should I modify Connection_getConnIndex in $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R53/ble5stack/basic_ble_profiles/app/app_connection.c to return -1 instead of 0 when no connection is found, so callers can distinguish between index 0 and not-found?",
       "expected_output": "A preflight report followed by a plan for the signature/logic change.",
       "files": [],
       "assertions": [
@@ -81,7 +81,7 @@
       "id": 5,
       "should_trigger": true,
       "category": "add-method",
-      "prompt": "Add a method to GAPBondMgr_FindAddr in /home/melisa/BLE/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/host/gapbondmgr.c that also returns the bond index as an output parameter alongside the existing return value.",
+      "prompt": "Add a method to GAPBondMgr_FindAddr in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/host/gapbondmgr.c that also returns the bond index as an output parameter alongside the existing return value.",
       "expected_output": "A preflight report covering the signature change, call graph impact on existing callers, and any arithmetic/resource concerns.",
       "files": [],
       "assertions": [
@@ -96,7 +96,7 @@
       "id": 6,
       "should_trigger": true,
       "category": "plan-new-logic",
-      "prompt": "/plan Add exponential backoff to the connection parameter update retry logic in app_connection.c. Each retry should double the wait interval up to a cap of 10 seconds.",
+      "prompt": "/plan Add exponential backoff to the connection parameter update retry logic in $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R53/ble5stack/basic_ble_profiles/app/app_connection.c. Each retry should double the wait interval up to a cap of 10 seconds.",
       "expected_output": "A preflight report (especially arithmetic: overflow risk on doubling intervals) followed by plan steps.",
       "files": [],
       "assertions": [
@@ -115,7 +115,7 @@
       "id": 7,
       "should_trigger": true,
       "category": "thinking-mode",
-      "prompt": "Think through how to add a watchdog reset inside OAD_processQueue in /home/melisa/BLE/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/profiles/oad/cc26xx/oad.c if the queue has been stalled for more than 30 seconds.",
+      "prompt": "Think through how to add a watchdog reset inside OAD_processQueue in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/profiles/oad/cc26xx/oad.c if the queue has been stalled for more than 30 seconds.",
       "expected_output": "A preflight report covering call graph (watchdog API call from within OAD queue processing), resource concerns, and arithmetic (timer overflow) — then the approach.",
       "files": [],
       "assertions": [
@@ -130,7 +130,7 @@
       "id": 8,
       "should_trigger": false,
       "category": "read-explain",
-      "prompt": "What parameters does GAP_DeviceInit take and what does each one do? I'm trying to understand the initialization flow.",
+      "prompt": "What parameters does GAP_DeviceInit in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/host/gap.c take and what does each one do? I'm trying to understand the initialization flow.",
       "expected_output": "A parameter-by-parameter explanation of GAP_DeviceInit — no preflight block.",
       "files": [],
       "assertions": [
@@ -144,14 +144,14 @@
     {
       "id": 9,
       "should_trigger": false,
-      "category": "search-callers",
-      "prompt": "/plan Show me the body of OAD_processQueue — I want to understand it before we make changes.",
-      "expected_output": "A read-only display of the function body — no preflight block despite /plan prefix.",
+      "category": "read-only",
+      "prompt": "Show me the body of OAD_processQueue in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/profiles/oad/cc26xx/oad.c — I want to understand it before we make changes.",
+      "expected_output": "A read-only display of the function body — no preflight block.",
       "files": [],
       "assertions": [
         {
           "text": "Response does NOT include a '## Preflight:' section",
-          "description": "Caller search is navigation-only, no function logic being written"
+          "description": "Read-only navigation request — no function logic being written"
         }
       ]
     },
@@ -160,7 +160,7 @@
       "id": 10,
       "should_trigger": false,
       "category": "analysis-no-change",
-      "prompt": "Review OAD_open in /home/melisa/BLE/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/profiles/oad/cc26xx/oad.c for potential issues. Don't change anything yet — just tell me what you find.",
+      "prompt": "Review OAD_open in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/profiles/oad/cc26xx/oad.c for potential issues. Don't change anything yet — just tell me what you find.",
       "expected_output": "A code review with observations — no preflight block since no change is planned.",
       "files": [],
       "assertions": [
@@ -175,7 +175,7 @@
       "id": 11,
       "should_trigger": true,
       "category": "plan-write-function",
-      "prompt": "/plan Write a function that validates a BLE connection handle before passing it to HCI_SendDataPkt — return an error code if the handle is out of range.",
+      "prompt": "/plan Write a function that validates a BLE connection handle before passing it to HCI_SendDataPkt in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/hci/cc26xx/hci.c — return an error code if the handle is out of range.",
       "expected_output": "A preflight report followed by the plan — 'write a function' inside /plan must trigger preflight.",
       "files": [],
       "assertions": [
@@ -194,7 +194,7 @@
       "id": 12,
       "should_trigger": true,
       "category": "plan-fix-bug",
-      "prompt": "/plan Fix the unsigned subtraction wrap in osal_mem_free when block size underflows — if the block header size exceeds the reported size the computed free size wraps to a huge number.",
+      "prompt": "/plan Fix the unsigned subtraction wrap in osal_mem_free in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/osal/src/common/osal_memory.c when block size underflows — if the block header size exceeds the reported size the computed free size wraps to a huge number.",
       "expected_output": "A preflight report (arithmetic: unsigned wraparound is the core risk) followed by the fix plan.",
       "files": [],
       "assertions": [
@@ -211,30 +211,38 @@
 
     {
       "id": 13,
-      "should_trigger": false,
-      "category": "plan-read-before-change",
-      "prompt": "/plan Show me how GAP_DeviceInit validates its addrMode parameter — I need to understand it before deciding what to change.",
-      "expected_output": "A read of the validation logic — no preflight block. /plan + read-only intent should stay quiet.",
+      "should_trigger": true,
+      "category": "freed-resource-error-path",
+      "prompt": "Refactor OAD_open in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/profiles/oad/cc26xx/oad.c to free oadCCCDTable and call mq_close on hOadQ before returning early if GATTServApp_RegisterService fails — right now both resources leak on that error path.",
+      "expected_output": "A preflight report where the Resources check maps the ownership of oadCCCDTable and hOadQ across all exit paths, flags whether the new cleanup creates a double-free risk if OAD_open is called again, and confirms every error path releases both resources exactly once.",
       "files": [],
       "assertions": [
         {
-          "text": "Response does NOT include a '## Preflight:' section",
-          "description": "/plan + explicit read-only intent ('before deciding what to change') — no new logic being written yet"
+          "text": "Response includes a preflight report section",
+          "description": "Refactoring resource cleanup paths requires preflight"
+        },
+        {
+          "text": "Preflight Resources check flags freed-resource or resource-lifetime concern — whether every exit path releases oadCCCDTable and hOadQ, or whether the cleanup introduces a double-free risk",
+          "description": "This is the primary freed-resource access scenario — the skill must reason about ownership across all control-flow paths"
         }
       ]
     },
 
     {
       "id": 14,
-      "should_trigger": false,
-      "category": "plan-build-run",
-      "prompt": "/plan Build the basic_ble example for LP_EM_CC2340R53 and show me the compiler warnings.",
-      "expected_output": "A build plan / command — no preflight block since no function logic is being written.",
+      "should_trigger": true,
+      "category": "call-order-hazard",
+      "prompt": "Add a call to GAPBondMgr_FindAddr as the first check inside OAD_open in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/profiles/oad/cc26xx/oad.c — so OAD rejects image transfers from unbonded devices before doing any setup.",
+      "expected_output": "A preflight report where the call graph check flags a call-order hazard: GAPBondMgr_FindAddr requires the bond manager to be initialized, and OAD_open may be called before that precondition is guaranteed in the stack startup sequence.",
       "files": [],
       "assertions": [
         {
-          "text": "Response does NOT include a '## Preflight:' section",
-          "description": "Build/run operation — no code is being written or modified"
+          "text": "Response includes a preflight report section",
+          "description": "Adding a new callee with an initialization dependency requires preflight"
+        },
+        {
+          "text": "Preflight call graph section flags a call-order or initialization hazard — GAPBondMgr_FindAddr has a dependency on the bond manager being initialized before OAD_open is invoked",
+          "description": "This is the primary call-order scenario from the skill's CFG analysis check"
         }
       ]
     }
