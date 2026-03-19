@@ -1,0 +1,213 @@
+{
+  "skill_name": "loci-preflight",
+  "description": "Tests that the plugin is correctly invoked (or correctly silent) and that every output always contains all four sections SKILL.md requires: Call graph, Arithmetic, Resources, Execution fit. Uses functions compiled into $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out.",
+  "note": "Set $LOCI_TEST_BLE_ROOT to your local BLE project root before running.",
+
+  "evals": [
+
+    {
+      "id": 1,
+      "should_trigger": true,
+      "category": "invoke-implement-all-fields",
+      "prompt": "Implement a retry loop inside HCI_SendDataPkt in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/hci/cc26xx/hci.c that retries up to 3 times if the connection handle is invalid before returning an error.",
+      "expected_output": "A preflight block with all four lines — Call graph, Arithmetic, Resources, Execution fit — before any code or edit steps.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Response includes a '## Preflight:' section header",
+          "description": "'implement' keyword must trigger the skill"
+        },
+        {
+          "text": "Preflight block contains a 'Call graph:' line",
+          "description": "SKILL.md mandates Call graph as the first check"
+        },
+        {
+          "text": "Preflight block contains an 'Arithmetic:' line",
+          "description": "SKILL.md mandates Arithmetic as the second check"
+        },
+        {
+          "text": "Preflight block contains a 'Resources:' line",
+          "description": "SKILL.md mandates Resources as the third check"
+        },
+        {
+          "text": "Preflight block contains an 'Execution fit:' line with value GOOD, ADJUST PLAN, or STOP",
+          "description": "SKILL.md mandates Execution fit as the verdict — exactly one of the three allowed values"
+        },
+        {
+          "text": "Preflight block appears before any code snippet or numbered edit steps",
+          "description": "SKILL.md: emit the report before describing what you will write"
+        }
+      ]
+    },
+
+    {
+      "id": 2,
+      "should_trigger": true,
+      "category": "invoke-add-method-all-fields",
+      "prompt": "Add a method to GAPBondMgr_FindAddr in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/host/gapbondmgr.c that also returns the bond index as an output parameter alongside the existing return value.",
+      "expected_output": "A preflight block with all four lines before the implementation plan.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Response includes a '## Preflight:' section header",
+          "description": "'add a method' keyword must trigger the skill"
+        },
+        {
+          "text": "Preflight block contains a 'Call graph:' line",
+          "description": "All three checks must be present"
+        },
+        {
+          "text": "Preflight block contains an 'Arithmetic:' line",
+          "description": "All three checks must be present"
+        },
+        {
+          "text": "Preflight block contains a 'Resources:' line",
+          "description": "All three checks must be present"
+        },
+        {
+          "text": "Preflight block contains an 'Execution fit:' line with value GOOD, ADJUST PLAN, or STOP",
+          "description": "Execution fit must be present and use one of the three allowed values"
+        }
+      ]
+    },
+
+    {
+      "id": 3,
+      "should_trigger": true,
+      "category": "invoke-modify-all-fields",
+      "prompt": "How should I modify osal_set_event in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/osal/src/common/osal.c to also log the event to a ring buffer before posting, so we can replay events in the debugger?",
+      "expected_output": "A preflight block with all four lines before the plan.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Response includes a '## Preflight:' section header",
+          "description": "'how should I modify' must trigger the skill"
+        },
+        {
+          "text": "Preflight block contains a 'Call graph:' line",
+          "description": "All three checks must be present"
+        },
+        {
+          "text": "Preflight block contains an 'Arithmetic:' line",
+          "description": "All three checks must be present"
+        },
+        {
+          "text": "Preflight block contains a 'Resources:' line",
+          "description": "All three checks must be present"
+        },
+        {
+          "text": "Preflight block contains an 'Execution fit:' line with value GOOD, ADJUST PLAN, or STOP",
+          "description": "Execution fit must be present"
+        }
+      ]
+    },
+
+    {
+      "id": 4,
+      "should_trigger": true,
+      "category": "invoke-plan-all-fields",
+      "prompt": "/plan Add a per-connection packet counter inside HCI_SendDataPkt in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/hci/cc26xx/hci.c that increments a uint32_t in the connection record on every successful send.",
+      "expected_output": "A preflight block with all four lines as part of the plan, before the edit steps.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Response includes a '## Preflight:' section header",
+          "description": "/plan must trigger the skill"
+        },
+        {
+          "text": "Preflight block contains a 'Call graph:' line",
+          "description": "All three checks must be present"
+        },
+        {
+          "text": "Preflight block contains an 'Arithmetic:' line",
+          "description": "All three checks must be present"
+        },
+        {
+          "text": "Preflight block contains a 'Resources:' line",
+          "description": "All three checks must be present"
+        },
+        {
+          "text": "Preflight block contains an 'Execution fit:' line with value GOOD, ADJUST PLAN, or STOP",
+          "description": "Execution fit must be present"
+        }
+      ]
+    },
+
+    {
+      "id": 5,
+      "should_trigger": true,
+      "category": "invoke-thinking-mode-all-fields",
+      "prompt": "Think through how to add a watchdog reset inside GAPBondMgr_ProcessEvent in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/host/gapbondmgr.c if the bond manager has been stuck processing the same event for more than 5 seconds.",
+      "expected_output": "A preflight block with all four lines before the design discussion.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Response includes a '## Preflight:' section header",
+          "description": "'think through how to add' triggers the skill"
+        },
+        {
+          "text": "Preflight block contains a 'Call graph:' line",
+          "description": "All three checks must be present"
+        },
+        {
+          "text": "Preflight block contains an 'Arithmetic:' line",
+          "description": "All three checks must be present"
+        },
+        {
+          "text": "Preflight block contains a 'Resources:' line",
+          "description": "All three checks must be present"
+        },
+        {
+          "text": "Preflight block contains an 'Execution fit:' line with value GOOD, ADJUST PLAN, or STOP",
+          "description": "Execution fit must be present"
+        }
+      ]
+    },
+
+    {
+      "id": 6,
+      "should_trigger": false,
+      "category": "no-invoke-explain",
+      "prompt": "Explain what GAPBondMgr_Init does in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/host/gapbondmgr.c and what each parameter controls.",
+      "expected_output": "A plain explanation with no preflight block.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Response does NOT contain a '## Preflight:' header or 'Call graph:' line",
+          "description": "Explain is read-only — skill must stay silent"
+        }
+      ]
+    },
+
+    {
+      "id": 7,
+      "should_trigger": false,
+      "category": "no-invoke-read-only",
+      "prompt": "Show me the body of osal_set_event in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/osal/src/common/osal.c — I want to understand how it dispatches events before I make any changes.",
+      "expected_output": "Display of the function body with no preflight block.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Response does NOT contain a '## Preflight:' header or 'Call graph:' line",
+          "description": "Read-only with explicit 'before I make changes' — skill must stay silent"
+        }
+      ]
+    },
+
+    {
+      "id": 8,
+      "should_trigger": false,
+      "category": "no-invoke-analysis-no-change",
+      "prompt": "Review HCI_SendDataPkt in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/hci/cc26xx/hci.c for potential issues. Don't change anything yet — just tell me what you find.",
+      "expected_output": "A code review with observations and no preflight block.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Response does NOT contain a '## Preflight:' header or 'Call graph:' line",
+          "description": "'don't change anything yet' is explicit analysis mode — preflight is premature"
+        }
+      ]
+    }
+
+  ]
+}
