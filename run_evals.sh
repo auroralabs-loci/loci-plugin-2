@@ -28,7 +28,7 @@ FILTER_SKILL=""
 FILTER_EVAL_ID=""
 LIST_MODE=false
 MAX_JOBS=4
-EVAL_TIMEOUT=120   # seconds per claude -p call
+EVAL_TIMEOUT=210   # seconds per claude -p call
 GRADE_TIMEOUT=60   # seconds per grader call
 
 # Well-known BLE artifacts (relative to BLE_ROOT)
