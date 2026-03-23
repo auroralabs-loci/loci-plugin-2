@@ -135,6 +135,94 @@ SESSION_CONTEXT="BLE project root: $BLE_ROOT
 Primary test ELF: $BLE_ELF"
 
 # ---------------------------------------------------------------------------
+# print_error_detail — structured diagnostics for ERROR outcomes
+#   $1: stage        ("claude-exec" | "timeout" | "empty-response" | "grade")
+#   $2: exit code    (numeric, or empty)
+#   $3: stderr file  (path, or empty string if none)
+#   $4: tag          (SKILL:EVAL_ID)
+#   $5: mcp config   (path, for next-steps hints)
+#   $6: response file (path, for next-steps hints; may not exist yet)
+# ---------------------------------------------------------------------------
+print_error_detail() {
+  local STAGE="$1"
+  local EXIT_CODE="$2"
+  local STDERR_F="$3"
+  local TAG="$4"
+  local MCP_CFG="${5:-}"
+  local RESPONSE_F="${6:-}"
+
+  echo "    ── Error Detail [$TAG] ──────────────────────────────────"
+  echo "    Stage:    $STAGE"
+
+  case "$STAGE" in
+    claude-exec)
+      echo "    Observed: claude CLI exited with code $EXIT_CODE"
+      if [[ -n "$STDERR_F" && -s "$STDERR_F" ]]; then
+        echo "    Stderr (first 5 lines):"
+        head -5 "$STDERR_F" | sed 's/^/      /'
+      else
+        echo "    Stderr:   (empty)"
+      fi
+      echo "    Likely causes:"
+      echo "      • Auth failure or expired API key"
+      echo "      • Token / rate-limit exhaustion"
+      echo "      • Network or DNS error reaching Anthropic API"
+      echo "      • MCP server unreachable (config: ${MCP_CFG:-unknown})"
+      echo "      • Claude CLI bug or version mismatch"
+      echo "    Next steps:"
+      echo "      1. Run 'claude -p \"hello\"' manually to verify auth"
+      if [[ -n "$STDERR_F" && -s "$STDERR_F" ]]; then
+        echo "      2. Inspect full stderr: cat $STDERR_F"
+      fi
+      echo "      3. Verify MCP server is up: curl ${MCP_CFG:+see $MCP_CFG}"
+      ;;
+    timeout)
+      echo "    Observed: no response within ${EVAL_TIMEOUT}s (exit 124)"
+      echo "    Likely causes:"
+      echo "      • Anthropic backend delay or overload"
+      echo "      • Very large prompt pushing context limits"
+      echo "      • MCP tool call hanging (check MCP server logs)"
+      echo "      • Network congestion or DNS timeout"
+      echo "    Next steps:"
+      echo "      1. Re-run with a higher --timeout value"
+      echo "      2. Check MCP server health"
+      echo "      3. Try a minimal prompt to isolate the hang"
+      ;;
+    empty-response)
+      echo "    Observed: claude exited 0 but produced no output"
+      echo "    Likely causes:"
+      echo "      • Prompt triggered a content refusal with no text output"
+      echo "      • System prompt conflict suppressing all output"
+      echo "      • Claude CLI piping issue swallowing stdout"
+      echo "    Next steps:"
+      echo "      1. Run the prompt manually: claude -p \"<prompt>\" to see raw output"
+      echo "      2. Simplify the system prompt and retry"
+      ;;
+    grade)
+      echo "    Observed: grader claude call failed (exit $EXIT_CODE)"
+      if [[ -n "$STDERR_F" && -s "$STDERR_F" ]]; then
+        echo "    Stderr (first 5 lines):"
+        head -5 "$STDERR_F" | sed 's/^/      /'
+      else
+        echo "    Stderr:   (empty)"
+      fi
+      echo "    Likely causes:"
+      echo "      • Same as claude-exec errors (auth, rate limit, network)"
+      echo "      • Grader prompt too large (response + expectations exceed context)"
+      if [[ -n "$RESPONSE_F" ]]; then
+        echo "      • Response file: $RESPONSE_F"
+      fi
+      echo "    Next steps:"
+      if [[ -n "$RESPONSE_F" && -f "$RESPONSE_F" ]]; then
+        echo "      1. Check response size: wc -c $RESPONSE_F"
+      fi
+      echo "      2. Re-run the grader manually against the saved response file"
+      ;;
+  esac
+  echo "    ─────────────────────────────────────────────────────────"
+}
+
+# ---------------------------------------------------------------------------
 # run_one_eval — runs a single eval (prompt + grade) and writes result files
 #   Called either inline (sequential) or as a background job (parallel).
 #   All output goes to a log file; the caller prints it.
@@ -150,8 +238,11 @@ run_one_eval() {
   local RESULTS_DIR="$8"
   local EVAL_TIMEOUT="$9"
   local GRADE_TIMEOUT="${10}"
+  local EVAL_FILE_NAME="${11}"
+  local JOB_NUM="${12}"
 
-  local TAG="${SKILL_NAME}:${EVAL_ID}"
+  local TAG="${EVAL_FILE_NAME} > ${EVAL_ID}"
+  local PROG_PFX="[${JOB_NUM}/${TOTAL}]"
   local RESPONSE_FILE="$RESULTS_DIR/${SKILL_NAME}_eval${EVAL_ID}_response.txt"
   local STDERR_FILE="$RESULTS_DIR/${SKILL_NAME}_eval${EVAL_ID}_stderr.txt"
   local GRADE_FILE="$RESULTS_DIR/${SKILL_NAME}_eval${EVAL_ID}_grade.txt"
@@ -163,6 +254,7 @@ run_one_eval() {
   PROMPT=$(echo "$PROMPT" | sed 's|^/[a-zA-Z_-]* ||')
 
   {
+    echo "${PROG_PFX} START    ${TAG}" >> "$PROGRESS_LOG"
     echo "  [$TAG] ${PROMPT:0:80}..."
 
     # ── Step 1: Run the eval prompt ────────────────────────────
@@ -171,20 +263,34 @@ run_one_eval() {
       CLAUDE_ARGS+=(--append-system-prompt "$SYSTEM_PROMPT")
     fi
 
-    local RESPONSE
-    if ! RESPONSE=$(echo "$PROMPT" | timeout "$EVAL_TIMEOUT" claude "${CLAUDE_ARGS[@]}" 2>"$STDERR_FILE"); then
-      local EXIT_CODE=$?
-      if [[ $EXIT_CODE -eq 124 ]]; then
-        echo "    TIMEOUT: eval exceeded ${EVAL_TIMEOUT}s"
+    local RESPONSE CLAUDE_EXIT=0
+    echo "${PROG_PFX} RUNNING  ${TAG}" >> "$PROGRESS_LOG"
+    RESPONSE=$(echo "$PROMPT" | timeout "$EVAL_TIMEOUT" claude "${CLAUDE_ARGS[@]}" 2>"$STDERR_FILE") || CLAUDE_EXIT=$?
+
+    if [[ $CLAUDE_EXIT -ne 0 ]]; then
+      if [[ $CLAUDE_EXIT -eq 124 ]]; then
+        echo "    ERROR: eval timed out after ${EVAL_TIMEOUT}s"
+        print_error_detail "timeout" "124" "$STDERR_FILE" "$TAG" "$MCP_CONFIG" "$RESPONSE_FILE"
         echo "TIMEOUT|eval exceeded ${EVAL_TIMEOUT}s" > "$VERDICT_FILE"
+        echo "${PROG_PFX} DONE     ${TAG}  ERROR (timeout)" >> "$PROGRESS_LOG"
       else
-        echo "    ERROR: claude exited non-zero ($EXIT_CODE)"
-        echo "ERROR" > "$VERDICT_FILE"
+        echo "    ERROR: claude exited with code $CLAUDE_EXIT"
+        print_error_detail "claude-exec" "$CLAUDE_EXIT" "$STDERR_FILE" "$TAG" "$MCP_CONFIG" "$RESPONSE_FILE"
+        echo "ERROR|claude exited with code $CLAUDE_EXIT" > "$VERDICT_FILE"
+        echo "${PROG_PFX} DONE     ${TAG}  ERROR (exit ${CLAUDE_EXIT})" >> "$PROGRESS_LOG"
       fi
       [[ ! -s "$STDERR_FILE" ]] && rm -f "$STDERR_FILE"
       return
     fi
     [[ ! -s "$STDERR_FILE" ]] && rm -f "$STDERR_FILE"
+
+    if [[ -z "$RESPONSE" ]]; then
+      echo "    ERROR: claude exited 0 but returned empty response"
+      print_error_detail "empty-response" "0" "" "$TAG" "$MCP_CONFIG" "$RESPONSE_FILE"
+      echo "ERROR|empty response despite exit code 0" > "$VERDICT_FILE"
+      echo "${PROG_PFX} DONE     ${TAG}  ERROR (empty response)" >> "$PROGRESS_LOG"
+      return
+    fi
 
     echo "$RESPONSE" > "$RESPONSE_FILE"
     local BYTES
@@ -224,12 +330,18 @@ EXPECTATION_RESULTS:
 VERDICT: PASS or FAIL
 REASON: <one-line summary>"
 
-    local GRADE
-    if ! GRADE=$(echo "$GRADE_PROMPT" | timeout "$GRADE_TIMEOUT" claude -p --model sonnet 2>/dev/null); then
-      echo "    GRADE ERROR: grader call failed"
-      echo "GRADE_ERROR" > "$VERDICT_FILE"
+    local GRADE_STDERR_FILE="$RESULTS_DIR/${SKILL_NAME}_eval${EVAL_ID}_grade_stderr.txt"
+    local GRADE GRADE_EXIT=0
+    GRADE=$(echo "$GRADE_PROMPT" | timeout "$GRADE_TIMEOUT" claude -p --model sonnet 2>"$GRADE_STDERR_FILE") || GRADE_EXIT=$?
+    if [[ $GRADE_EXIT -ne 0 ]]; then
+      echo "    GRADE ERROR: grader call failed (exit $GRADE_EXIT)"
+      print_error_detail "grade" "$GRADE_EXIT" "$GRADE_STDERR_FILE" "$TAG" "$MCP_CONFIG" "$RESPONSE_FILE"
+      [[ ! -s "$GRADE_STDERR_FILE" ]] && rm -f "$GRADE_STDERR_FILE"
+      echo "GRADE_ERROR|grader exited with code $GRADE_EXIT" > "$VERDICT_FILE"
+      echo "${PROG_PFX} DONE     ${TAG}  ERROR (grade fail)" >> "$PROGRESS_LOG"
       return
     fi
+    [[ ! -s "$GRADE_STDERR_FILE" ]] && rm -f "$GRADE_STDERR_FILE"
 
     echo "$GRADE" > "$GRADE_FILE"
 
@@ -238,11 +350,14 @@ REASON: <one-line summary>"
     REASON=$(echo "$GRADE" | grep -oP 'REASON:\s*\K.*' | head -1 || echo "could not extract reason")
 
     echo "${VERDICT}|${REASON}" > "$VERDICT_FILE"
+    echo "${PROG_PFX} DONE     ${TAG}  ${VERDICT}" >> "$PROGRESS_LOG"
 
     if [[ "$VERDICT" == "PASS" ]]; then
       echo "    PASS — $REASON"
     elif [[ "$VERDICT" == "FAIL" ]]; then
       echo "    FAIL — $REASON"
+      echo "    Grader explanation (first 8 lines):"
+      head -8 "$GRADE_FILE" | sed 's/^/      /'
     else
       echo "    UNKNOWN — could not parse verdict"
     fi
@@ -252,16 +367,17 @@ REASON: <one-line summary>"
 # ---------------------------------------------------------------------------
 # Collect all evals into a job list, then run them
 # ---------------------------------------------------------------------------
-EVAL_FILES=$(find "$SCRIPT_DIR/skills" -path "*/evals/evals.json" 2>/dev/null | sort)
+EVAL_FILES=$(find "$SCRIPT_DIR/skills" -name "*evals.json" 2>/dev/null | sort)
 
 if [[ -z "$EVAL_FILES" ]]; then
-  echo "No eval files found under skills/*/evals/"
+  echo "No *evals.json files found under skills/"
   exit 1
 fi
 
 # Collect eval jobs as arrays of parameters
 declare -a JOB_SKILLS=()
 declare -a JOB_IDS=()
+declare -a JOB_FILES=()
 declare -a JOB_PROMPTS=()
 declare -a JOB_EXPECTED=()
 declare -a JOB_EXPECTATIONS=()
@@ -305,6 +421,7 @@ $(cat "$SKILL_MD")
 
     JOB_SKILLS+=("$SKILL_NAME")
     JOB_IDS+=("$EVAL_ID")
+    JOB_FILES+=("$(basename "$EVAL_FILE")")
     JOB_PROMPTS+=("$PROMPT")
     JOB_EXPECTED+=("$EXPECTED")
     JOB_EXPECTATIONS+=("$EXPECTATIONS")
@@ -324,6 +441,11 @@ echo ""
 # ---------------------------------------------------------------------------
 # Launch jobs with concurrency limit
 # ---------------------------------------------------------------------------
+PROGRESS_LOG="$RESULTS_DIR/.progress"
+touch "$PROGRESS_LOG"
+tail -f "$PROGRESS_LOG" &
+TAIL_PID=$!
+
 RUNNING=0
 declare -a PIDS=()
 
@@ -338,7 +460,9 @@ for (( j=0; j<TOTAL; j++ )); do
     "$MCP_CONFIG" \
     "$RESULTS_DIR" \
     "$EVAL_TIMEOUT" \
-    "$GRADE_TIMEOUT" &
+    "$GRADE_TIMEOUT" \
+    "${JOB_FILES[$j]}" \
+    "$((j+1))" &
 
   PIDS[$j]=$!
   RUNNING=$((RUNNING + 1))
@@ -353,6 +477,12 @@ done
 # Wait for all remaining jobs
 wait
 
+# Give tail a moment to flush the last lines, then stop it
+sleep 0.3
+kill "$TAIL_PID" 2>/dev/null
+wait "$TAIL_PID" 2>/dev/null
+echo ""
+
 # ---------------------------------------------------------------------------
 # Collect results and print output
 # ---------------------------------------------------------------------------
@@ -362,6 +492,7 @@ CURRENT_SKILL=""
 for (( j=0; j<TOTAL; j++ )); do
   SKILL_NAME="${JOB_SKILLS[$j]}"
   EVAL_ID="${JOB_IDS[$j]}"
+  EVAL_FILE_NAME="${JOB_FILES[$j]}"
 
   # Print skill header on change
   if [[ "$SKILL_NAME" != "$CURRENT_SKILL" ]]; then
@@ -383,9 +514,9 @@ for (( j=0; j<TOTAL; j++ )); do
   # Read verdict
   VERDICT_FILE="$RESULTS_DIR/${SKILL_NAME}_eval${EVAL_ID}_verdict.txt"
   if [[ ! -f "$VERDICT_FILE" ]]; then
-    echo -e "    ${RED}ERROR${NC}: no verdict produced"
+    echo -e "  ${EVAL_FILE_NAME}  ${EVAL_ID}: ${RED}ERROR${NC} — no verdict produced"
     ERRORED=$((ERRORED + 1))
-    echo "| $SKILL_NAME | $EVAL_ID | ERROR | no verdict produced |" >> "$REPORT"
+    echo "| $EVAL_FILE_NAME | $EVAL_ID | ERROR | no verdict produced |" >> "$REPORT"
     continue
   fi
 
@@ -395,24 +526,23 @@ for (( j=0; j<TOTAL; j++ )); do
   REASON="${VERDICT_LINE#*|}"
 
   if [[ "$VERDICT" == "PASS" ]]; then
-    echo -e "    ${GREEN}✓ PASS${NC} — $REASON"
+    echo -e "  ${EVAL_FILE_NAME}  ${EVAL_ID}: ${GREEN}✓ PASSED${NC} — $REASON"
     PASSED=$((PASSED + 1))
   elif [[ "$VERDICT" == "FAIL" ]]; then
-    echo -e "    ${RED}✗ FAIL${NC} — $REASON"
+    echo -e "  ${EVAL_FILE_NAME}  ${EVAL_ID}: ${RED}✗ FAILED${NC} — $REASON"
     FAILED=$((FAILED + 1))
   elif [[ "$VERDICT" == "TIMEOUT" ]]; then
-    echo -e "    ${YELLOW}⏱ TIMEOUT${NC} — $REASON"
+    echo -e "  ${EVAL_FILE_NAME}  ${EVAL_ID}: ${YELLOW}⏱ ERROR (timeout)${NC} — $REASON"
     ERRORED=$((ERRORED + 1))
   elif [[ "$VERDICT" == "ERROR" || "$VERDICT" == "GRADE_ERROR" ]]; then
-    echo -e "    ${RED}ERROR${NC}"
+    echo -e "  ${EVAL_FILE_NAME}  ${EVAL_ID}: ${RED}ERROR${NC} — $REASON"
     ERRORED=$((ERRORED + 1))
-    REASON="$VERDICT"
   else
-    echo -e "    ${YELLOW}? UNKNOWN${NC} — could not parse verdict"
+    echo -e "  ${EVAL_FILE_NAME}  ${EVAL_ID}: ${YELLOW}? UNKNOWN${NC} — could not parse verdict"
     ERRORED=$((ERRORED + 1))
     VERDICT="UNKNOWN"
   fi
-  echo "| $SKILL_NAME | $EVAL_ID | $VERDICT | $REASON |" >> "$REPORT"
+  echo "| $EVAL_FILE_NAME | $EVAL_ID | $VERDICT | $REASON |" >> "$REPORT"
   echo ""
 done
 
