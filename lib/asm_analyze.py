@@ -616,6 +616,558 @@ def get_cfg_text(detected_arch, files, functions):
     return cfg_text
 
 
+# ---------------------------------------------------------------------------
+# memmap helpers
+# ---------------------------------------------------------------------------
+
+def _classify_section(sec) -> tuple:
+    """Classify an ELF section into (type_str, region_str) or (None, None)."""
+    from elftools.elf.constants import SH_FLAGS
+
+    flags = sec['sh_flags']
+    sh_type = sec['sh_type']
+
+    if not (flags & SH_FLAGS.SHF_ALLOC):
+        return (None, None)
+
+    if sh_type == 'SHT_NOBITS':
+        return ('bss', 'RAM')
+
+    if sh_type == 'SHT_PROGBITS':
+        if flags & SH_FLAGS.SHF_EXECINSTR:
+            return ('code', 'ROM')
+        elif flags & SH_FLAGS.SHF_WRITE:
+            return ('data', 'RAM')
+        else:
+            return ('rodata', 'ROM')
+
+    # Other types (INIT_ARRAY, FINI_ARRAY, etc.)
+    if flags & SH_FLAGS.SHF_WRITE:
+        return ('data', 'RAM')
+    return ('rodata', 'ROM')
+
+
+def _flags_to_string(flags: int) -> str:
+    """Convert ELF section flags to human-readable string like 'WAX'."""
+    from elftools.elf.constants import SH_FLAGS
+
+    result = ''
+    if flags & SH_FLAGS.SHF_WRITE:
+        result += 'W'
+    if flags & SH_FLAGS.SHF_ALLOC:
+        result += 'A'
+    if flags & SH_FLAGS.SHF_EXECINSTR:
+        result += 'X'
+    return result
+
+
+def _parse_map_memory_config(map_path: str) -> dict | None:
+    """Parse memory region configuration from a linker .map file.
+
+    Supports multiple formats: GCC/GNU ld, IAR EWARM, Keil/ARM Compiler.
+    Tries each parser in turn and returns the first successful result.
+    Returns dict mapping region name to {origin, length, attrs}, or None on failure.
+    """
+    try:
+        with open(map_path, 'r') as f:
+            lines = f.readlines()
+    except OSError:
+        return None
+
+    # Try each format parser in order
+    for parser in (_parse_map_gcc, _parse_map_iar, _parse_map_keil):
+        result = parser(lines)
+        if result:
+            return result
+    return None
+
+
+def _parse_map_gcc(lines: list[str]) -> dict | None:
+    """Parse GCC/GNU ld format (also used by TI toolchains).
+
+    Format:
+        Memory Configuration
+
+        Name             Origin             Length             Attributes
+        FLASH            0x08000000         0x00200000         xr
+        RAM              0x20000000         0x00040000         xrw
+        *default*        0x00000000         0xffffffff
+    """
+    start = None
+    for i, line in enumerate(lines):
+        if 'Memory Configuration' in line:
+            start = i
+            break
+    if start is None:
+        return None
+
+    regions = {}
+    data_started = False
+    for line in lines[start + 1:]:
+        stripped = line.strip()
+        if not stripped:
+            if data_started:
+                break
+            continue
+        if stripped.startswith('Name') and 'Origin' in stripped:
+            data_started = True
+            continue
+        if stripped.startswith('Linker script'):
+            break
+        if not data_started:
+            continue
+
+        parts = stripped.split()
+        if len(parts) < 3:
+            continue
+
+        name = parts[0]
+        if name == '*default*':
+            continue
+
+        try:
+            origin = int(parts[1], 16)
+            length = int(parts[2], 16)
+        except (ValueError, IndexError):
+            continue
+
+        attrs = parts[3] if len(parts) > 3 else ''
+        regions[name] = {'origin': origin, 'length': length, 'attrs': attrs}
+
+    return regions if regions else None
+
+
+def _parse_map_iar(lines: list[str]) -> dict | None:
+    """Parse IAR EWARM linker map format.
+
+    Extracts regions from the PLACEMENT SUMMARY section:
+        "P1":  place in [0x08000000-0x081fffff] { ro };
+        "P2":  place in [0x20000000-0x2001ffff] { rw, block CSTACK, block HEAP };
+
+    Also handles the "A0" form:
+        "A0":  place at start of [0x08000000-0x081fffff] { ro section .intvec };
+    """
+    # Detect IAR format
+    is_iar = False
+    for line in lines[:50]:
+        if 'IAR Linker' in line or 'PLACEMENT SUMMARY' in line:
+            is_iar = True
+            break
+    if not is_iar:
+        return None
+
+    # Find PLACEMENT SUMMARY section
+    start = None
+    for i, line in enumerate(lines):
+        if '*** PLACEMENT SUMMARY' in line or 'PLACEMENT SUMMARY' in line.strip():
+            start = i
+            break
+    if start is None:
+        return None
+
+    # Pattern: "NAME": place in [0xSTART-0xEND] { ... };
+    #      or: "NAME": place at start of [0xSTART-0xEND] { ... };
+    place_re = re.compile(
+        r'"([^"]+)":\s+place\s+(?:in|at\s+\w+\s+of)\s+'
+        r'\[0x([0-9a-fA-F]+)-0x([0-9a-fA-F]+)\]\s*\{([^}]*)\}'
+    )
+
+    regions = {}
+    past_header = False
+    for line in lines[start + 1:]:
+        stripped = line.strip()
+        # Skip the *** closing line of the PLACEMENT SUMMARY header block
+        if not past_header:
+            if stripped == '***' or not stripped:
+                continue
+            past_header = True
+        # Stop at next *** section header
+        if stripped.startswith('***'):
+            break
+
+        m = place_re.search(stripped)
+        if not m:
+            continue
+
+        name = m.group(1)
+        range_start = int(m.group(2), 16)
+        range_end = int(m.group(3), 16)
+        content = m.group(4).strip()
+
+        length = range_end - range_start + 1
+
+        # Derive attrs from placement content
+        attrs = ''
+        if 'ro' in content:
+            attrs = 'r'
+        if 'rw' in content:
+            attrs = 'rw'
+        if 'code' in content or '.text' in content or '.intvec' in content:
+            attrs += 'x'
+
+        # Merge duplicate address ranges under the same region
+        if name not in regions:
+            regions[name] = {'origin': range_start, 'length': length, 'attrs': attrs}
+
+    return regions if regions else None
+
+
+def _parse_map_keil(lines: list[str]) -> dict | None:
+    """Parse Keil/ARM Compiler (armlink) linker map format.
+
+    Extracts regions from Execution Region entries:
+        Execution Region ER_IROM1 (Exec base: 0x08000000, Load base: 0x08000000,
+                                   Size: 0x00001200, Max: 0x00100000, ABSOLUTE)
+
+        Load Region LR_IROM1 (Base: 0x08000000, Size: 0x00001234, Max: 0x00100000, ABSOLUTE)
+    """
+    # Detect Keil/ARM format
+    is_keil = False
+    for line in lines[:100]:
+        if 'ARM Linker' in line or 'armlink' in line or 'Load Region' in line:
+            is_keil = True
+            break
+    if not is_keil:
+        return None
+
+    # Pattern: Execution Region NAME (Exec base: 0xADDR, ..., Max: 0xMAX, ...)
+    exec_re = re.compile(
+        r'Execution Region\s+(\S+)\s+\('
+        r'Exec base:\s*0x([0-9a-fA-F]+).*?'
+        r'Max:\s*0x([0-9a-fA-F]+)'
+    )
+
+    regions = {}
+    for line in lines:
+        m = exec_re.search(line)
+        if not m:
+            continue
+
+        name = m.group(1)
+        origin = int(m.group(2), 16)
+        max_size = int(m.group(3), 16)
+
+        # Derive attrs from common naming conventions
+        attrs = ''
+        name_upper = name.upper()
+        if 'ROM' in name_upper or 'FLASH' in name_upper or 'IROM' in name_upper:
+            attrs = 'xr'
+        elif 'RAM' in name_upper or 'IRAM' in name_upper:
+            attrs = 'rw'
+
+        regions[name] = {'origin': origin, 'length': max_size, 'attrs': attrs}
+
+    return regions if regions else None
+
+
+def _memmap_from_elf(elf_path: str, top_n: int = 10) -> dict:
+    """Analyze a single ELF file for memory usage. Returns dict with sections,
+    summary, top_consumers, all_symbols."""
+    from elftools.elf.elffile import ELFFile
+
+    E_MACHINE_MAP = {
+        'EM_ARM': 'cortexm',
+        'EM_AARCH64': 'aarch64',
+        'EM_TRICORE': 'tricore',
+    }
+
+    with open(elf_path, 'rb') as f:
+        elf = ELFFile(f)
+
+        # ELF metadata
+        e_type = elf.header['e_type']
+        is_relocatable = (e_type == 'ET_REL')
+        elf_type = 'relocatable' if is_relocatable else 'executable'
+
+        e_machine = elf.header['e_machine']
+        architecture = E_MACHINE_MAP.get(e_machine, e_machine)
+
+        # Classify sections
+        sections = []
+        summary = {
+            'rom_total': 0, 'ram_static_total': 0,
+            'code_size': 0, 'rodata_size': 0,
+            'data_size': 0, 'bss_size': 0,
+        }
+
+        for sec in elf.iter_sections():
+            sec_type, sec_region = _classify_section(sec)
+            if sec_type is None:
+                continue
+
+            size = sec['sh_size']
+            addr = sec['sh_addr']
+            flags = _flags_to_string(sec['sh_flags'])
+
+            sections.append({
+                'name': sec.name,
+                'address': f"0x{addr:08x}",
+                'size': size,
+                'type': sec_type,
+                'flags': flags,
+                'memory_region': None if is_relocatable else sec_region,
+            })
+
+            # Accumulate summary
+            if sec_type == 'code':
+                summary['code_size'] += size
+                summary['rom_total'] += size
+            elif sec_type == 'rodata':
+                summary['rodata_size'] += size
+                summary['rom_total'] += size
+            elif sec_type == 'data':
+                summary['data_size'] += size
+                summary['ram_static_total'] += size
+                # .data also occupies ROM for initial values
+                summary['rom_total'] += size
+            elif sec_type == 'bss':
+                summary['bss_size'] += size
+                summary['ram_static_total'] += size
+
+        # Find top consumers from symbol tables
+        rom_symbols = []
+        ram_symbols = []
+        all_symbols = {}
+
+        for sec in elf.iter_sections():
+            if sec['sh_type'] not in ('SHT_SYMTAB', 'SHT_DYNSYM'):
+                continue
+            for sym in sec.iter_symbols():
+                sym_type = sym['st_info']['type']
+                sym_size = sym['st_size']
+                sym_name = sym.name
+
+                if not sym_name or sym_size == 0:
+                    continue
+
+                # Determine if ROM or RAM based on the section the symbol lives in
+                sym_shndx = sym['st_shndx']
+                if isinstance(sym_shndx, str) and sym_shndx in ('SHN_UNDEF', 'SHN_ABS', 'SHN_COMMON'):
+                    continue
+
+                try:
+                    target_sec = elf.get_section(sym_shndx)
+                    target_type, target_region = _classify_section(target_sec)
+                except (IndexError, TypeError):
+                    continue
+
+                if target_type is None:
+                    continue
+
+                entry = {'name': sym_name, 'size': sym_size, 'type': sym_type}
+                all_symbols[sym_name] = {
+                    'size': sym_size,
+                    'type': sym_type,
+                    'region': target_region,
+                    'section_type': target_type,
+                }
+
+                if target_region == 'ROM':
+                    rom_symbols.append(entry)
+                elif target_region == 'RAM':
+                    ram_symbols.append(entry)
+
+        rom_symbols.sort(key=lambda s: s['size'], reverse=True)
+        ram_symbols.sort(key=lambda s: s['size'], reverse=True)
+
+    return {
+        'elf_path': elf_path,
+        'elf_type': elf_type,
+        'architecture': architecture,
+        'sections': sections,
+        'summary': summary,
+        'top_consumers': {
+            'rom': rom_symbols[:top_n],
+            'ram': ram_symbols[:top_n],
+        },
+        'all_symbols': all_symbols,
+    }
+
+
+def memmap(elf_path: str,
+           comparing_elf_path: str | None = None,
+           map_file: str | None = None,
+           top_n: int = 10) -> dict:
+    """ROM/RAM memory usage report from ELF section and symbol analysis.
+
+    Single report mode: analyzes one ELF, optionally with map file for region budgets.
+    Delta mode: compares two ELFs and reports size changes.
+    """
+    if comparing_elf_path is None:
+        # --- Single report mode ---
+        report = _memmap_from_elf(elf_path, top_n)
+        is_relocatable = (report['elf_type'] == 'relocatable')
+
+        # Memory regions from map file
+        memory_regions = None
+        if map_file and not is_relocatable:
+            regions_config = _parse_map_memory_config(map_file)
+            if regions_config:
+                memory_regions = {}
+                for region_name, region_info in regions_config.items():
+                    origin = region_info['origin']
+                    length = region_info['length']
+                    used = 0
+                    for sec in report['sections']:
+                        sec_addr = int(sec['address'], 16)
+                        if origin <= sec_addr < origin + length:
+                            used += sec['size']
+                    usage_pct = round(used / length * 100, 1) if length > 0 else 0.0
+                    memory_regions[region_name] = {
+                        'origin': f"0x{origin:08x}",
+                        'length': length,
+                        'used': used,
+                        'usage_pct': usage_pct,
+                    }
+
+        # Remove internal all_symbols from output
+        report.pop('all_symbols', None)
+        report['mode'] = 'report'
+        report['memory_regions'] = memory_regions
+        return report
+
+    else:
+        # --- Delta mode ---
+        base = _memmap_from_elf(elf_path, top_n)
+        current = _memmap_from_elf(comparing_elf_path, top_n)
+
+        # Section-level deltas
+        base_sections = {s['name']: s for s in base['sections']}
+        current_sections = {s['name']: s for s in current['sections']}
+        all_section_names = list(dict.fromkeys(
+            [s['name'] for s in base['sections']] +
+            [s['name'] for s in current['sections']]
+        ))
+
+        section_deltas = []
+        for name in all_section_names:
+            b = base_sections.get(name)
+            c = current_sections.get(name)
+            base_size = b['size'] if b else 0
+            current_size = c['size'] if c else 0
+            delta = current_size - base_size
+            delta_pct = round(delta / base_size * 100, 1) if base_size > 0 else (100.0 if delta > 0 else 0.0)
+            sec_type = (c or b)['type']
+            sec_region = (c or b).get('memory_region')
+            section_deltas.append({
+                'name': name,
+                'base_size': base_size,
+                'current_size': current_size,
+                'delta': delta,
+                'delta_pct': delta_pct,
+                'type': sec_type,
+                'memory_region': sec_region,
+            })
+
+        # Summary deltas
+        summary_delta = {}
+        for key in ('rom_total', 'ram_static_total', 'code_size', 'rodata_size', 'data_size', 'bss_size'):
+            b_val = base['summary'][key]
+            c_val = current['summary'][key]
+            delta = c_val - b_val
+            delta_pct = round(delta / b_val * 100, 1) if b_val > 0 else (100.0 if delta > 0 else 0.0)
+            summary_delta[key] = {
+                'base': b_val,
+                'current': c_val,
+                'delta': delta,
+                'delta_pct': delta_pct,
+            }
+
+        # Symbol-level deltas
+        base_syms = base['all_symbols']
+        current_syms = current['all_symbols']
+
+        rom_sym_deltas = []
+        ram_sym_deltas = []
+
+        # Added symbols (in current but not in base)
+        for name, info in current_syms.items():
+            if name not in base_syms:
+                entry = {'name': name, 'status': 'added', 'size': info['size']}
+                if info['region'] == 'ROM':
+                    rom_sym_deltas.append(entry)
+                else:
+                    ram_sym_deltas.append(entry)
+
+        # Removed symbols (in base but not in current)
+        for name, info in base_syms.items():
+            if name not in current_syms:
+                entry = {'name': name, 'status': 'removed', 'size': info['size']}
+                if info['region'] == 'ROM':
+                    rom_sym_deltas.append(entry)
+                else:
+                    ram_sym_deltas.append(entry)
+
+        # Changed symbols (in both but different sizes)
+        for name in base_syms:
+            if name in current_syms:
+                b_size = base_syms[name]['size']
+                c_size = current_syms[name]['size']
+                if b_size != c_size:
+                    region = current_syms[name]['region']
+                    entry = {
+                        'name': name,
+                        'status': 'changed',
+                        'base_size': b_size,
+                        'current_size': c_size,
+                        'delta': c_size - b_size,
+                    }
+                    if region == 'ROM':
+                        rom_sym_deltas.append(entry)
+                    else:
+                        ram_sym_deltas.append(entry)
+
+        # Sort by absolute delta descending, take top_n
+        rom_sym_deltas.sort(key=lambda s: abs(s.get('delta', s.get('size', 0))), reverse=True)
+        ram_sym_deltas.sort(key=lambda s: abs(s.get('delta', s.get('size', 0))), reverse=True)
+
+        # Memory regions delta
+        memory_regions_delta = None
+        is_relocatable = (base['elf_type'] == 'relocatable')
+        if map_file and not is_relocatable:
+            regions_config = _parse_map_memory_config(map_file)
+            if regions_config:
+                memory_regions_delta = {}
+                for region_name, region_info in regions_config.items():
+                    origin = region_info['origin']
+                    length = region_info['length']
+                    base_used = 0
+                    current_used = 0
+                    for sec in base['sections']:
+                        sec_addr = int(sec['address'], 16)
+                        if origin <= sec_addr < origin + length:
+                            base_used += sec['size']
+                    for sec in current['sections']:
+                        sec_addr = int(sec['address'], 16)
+                        if origin <= sec_addr < origin + length:
+                            current_used += sec['size']
+                    delta = current_used - base_used
+                    base_pct = round(base_used / length * 100, 1) if length > 0 else 0.0
+                    current_pct = round(current_used / length * 100, 1) if length > 0 else 0.0
+                    memory_regions_delta[region_name] = {
+                        'base_used': base_used,
+                        'current_used': current_used,
+                        'delta': delta,
+                        'length': length,
+                        'base_pct': base_pct,
+                        'current_pct': current_pct,
+                    }
+
+        return {
+            'mode': 'delta',
+            'base_elf': elf_path,
+            'current_elf': comparing_elf_path,
+            'architecture': current['architecture'],
+            'section_deltas': section_deltas,
+            'summary_delta': summary_delta,
+            'symbol_deltas': {
+                'rom': rom_sym_deltas[:top_n],
+                'ram': ram_sym_deltas[:top_n],
+            },
+            'memory_regions_delta': memory_regions_delta,
+        }
+
+
 def stack_depth(elf_path: str | None = None,
                 asm_path: str | None = None,
                 callgraph_dot_path: str | None = None,
@@ -761,6 +1313,19 @@ def main():
     p_stack.add_argument("--unknown-callee-size", type=int, default=64,
                          help="Assumed frame size in bytes for unknown/external callees (default: 64)")
 
+    # memmap
+    p_memmap = subparsers.add_parser(
+        "memmap",
+        help="ROM/RAM memory usage report from ELF section and symbol analysis",
+    )
+    p_memmap.add_argument("--elf-path", required=True, help="Path to the ELF binary or .o file")
+    p_memmap.add_argument("--comparing-elf-path", default=None,
+                           help="Path to a second ELF to compare against (enables delta report)")
+    p_memmap.add_argument("--map-file", default=None,
+                           help="Path to GCC linker map file (enables region budgets)")
+    p_memmap.add_argument("--top-n", type=int, default=10,
+                           help="Number of top consumers to report per category (default: 10)")
+
     args = parser.parse_args()
 
     try:
@@ -817,6 +1382,13 @@ def main():
                 threshold=args.threshold,
                 max_recursion_depth=args.max_recursion_depth,
                 unknown_callee_size=args.unknown_callee_size,
+            )
+        elif args.command == "memmap":
+            result = memmap(
+                elf_path=args.elf_path,
+                comparing_elf_path=args.comparing_elf_path,
+                map_file=args.map_file,
+                top_n=args.top_n,
             )
         else:
             result = {"error": f"Unknown command: {args.command}"}
