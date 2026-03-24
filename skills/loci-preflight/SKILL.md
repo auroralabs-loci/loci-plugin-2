@@ -34,6 +34,9 @@ preflight report as a section of the plan before listing the edit steps.
 
 ## The checks
 
+Check that loci MCP is connected and authenticated, you see the tools before running the preflight steps that require it. If the MCP is unavailable request the user to authenticate it. For plugin to work mcp should be authenticated and connected.
+
+
 ### 1. Call graph (CFG analysis)
 *What does the assembly-level control flow of the callees actually look like?*
 
