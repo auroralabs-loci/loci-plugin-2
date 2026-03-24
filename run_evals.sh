@@ -105,6 +105,7 @@ RESULTS_DIR="$SCRIPT_DIR/eval-results/$TIMESTAMP"
 mkdir -p "$RESULTS_DIR"
 
 MCP_CONFIG=""
+PLUGIN_MCP_JSON="$(find ~/.claude/plugins/cache/loci-plugin -name plugin.json 2>/dev/null | sort -V | tail -1)"
 if [[ -n "${LOCI_MCP_TOKEN:-}" ]]; then
   MCP_CONFIG="$RESULTS_DIR/.mcp-config.json"
   cat > "$MCP_CONFIG" <<EOF
@@ -119,6 +120,17 @@ if [[ -n "${LOCI_MCP_TOKEN:-}" ]]; then
 }
 EOF
   echo "MCP: authenticated (token provided)"
+elif [[ -z "${ANTHROPIC_API_KEY:-}" && -n "$PLUGIN_MCP_JSON" ]]; then
+  # Browser OAuth: reuse the plugin's MCP config (no Bearer token needed —
+  # Claude's OAuth session authenticates with the MCP server directly).
+  MCP_CONFIG="$RESULTS_DIR/.mcp-config.json"
+  python3 -c "
+import json, sys
+with open('$PLUGIN_MCP_JSON') as f:
+    p = json.load(f)
+print(json.dumps({'mcpServers': p.get('mcpServers', {})}, indent=2))
+" > "$MCP_CONFIG"
+  echo "MCP: using plugin config (OAuth session auth)"
 else
   echo "MCP: skipped (LOCI_MCP_TOKEN not set — skills will use fallback paths)"
 fi
@@ -337,7 +349,12 @@ run_one_eval() {
 
   # ── Step 1: Run the eval prompt ────────────────────────────
   # --bare skips hooks/plugins so eval measures the skill, not setup overhead.
-  local CLAUDE_ARGS=(-p --bare --dangerously-skip-permissions)
+  # NOTE: --bare disables OAuth/keychain auth — only use it when ANTHROPIC_API_KEY
+  # is set (API billing). With browser-based OAuth, omit --bare so auth works.
+  local CLAUDE_ARGS=(-p --dangerously-skip-permissions)
+  if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+    CLAUDE_ARGS+=(--bare)
+  fi
   if [[ -n "$MCP_CONFIG" ]]; then
     CLAUDE_ARGS+=(--mcp-config "$MCP_CONFIG")
   fi
@@ -503,8 +520,12 @@ REASON: <one-line summary>"
 
     local GRADE_STDERR_FILE="$RESULTS_DIR/${SKILL_NAME}_eval${EVAL_ID}_grade_stderr.txt"
     local GRADE GRADE_EXIT=0
+    local GRADER_BARE_FLAG=()
+    if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+      GRADER_BARE_FLAG=(--bare)
+    fi
     T_START=$(date +%s)
-    GRADE=$(echo "$GRADE_PROMPT" | timeout --kill-after=10 "$GRADE_TIMEOUT" claude -p --bare --model sonnet 2>"$GRADE_STDERR_FILE") || GRADE_EXIT=$?
+    GRADE=$(echo "$GRADE_PROMPT" | timeout --kill-after=10 "$GRADE_TIMEOUT" claude -p "${GRADER_BARE_FLAG[@]}" --model sonnet 2>"$GRADE_STDERR_FILE") || GRADE_EXIT=$?
     T_END=$(date +%s)
     T_ELAPSED=$((T_END - T_START))
 
