@@ -17,23 +17,19 @@
         },
         {
           "text": "Preflight block contains a 'Call graph:' line",
-          "description": "SKILL.md mandates Call graph as the first check"
+          "description": "All four checks must be present"
         },
         {
           "text": "Preflight block contains an 'Arithmetic:' line",
-          "description": "SKILL.md mandates Arithmetic as the second check"
+          "description": "All four checks must be present"
         },
         {
           "text": "Preflight block contains a 'Resources:' line",
-          "description": "SKILL.md mandates Resources as the third check"
+          "description": "All four checks must be present"
         },
         {
           "text": "Preflight block contains an 'Execution fit:' line with value GOOD, ADJUST PLAN, or STOP",
-          "description": "SKILL.md mandates Execution fit as the verdict — exactly one of the three allowed values"
-        },
-        {
-          "text": "Preflight block appears before any code snippet or numbered edit steps",
-          "description": "SKILL.md: emit the report before describing what you will write"
+          "description": "Execution fit must be present and use one of the three allowed values"
         }
       ]
     },

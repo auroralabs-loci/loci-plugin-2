@@ -7,7 +7,7 @@
       "id": "pf-simple-1",
       "should_trigger": true,
       "category": "timing-budget",
-      "prompt": "I want to add a call to GAPBondMgr_FindAddr at the top of HCI_SendDataPkt in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/hci/cc26xx/hci.c to verify the peer is bonded before sending data. The HCI data path must complete within 10μs at 48 MHz (480 cycles total). Both functions are compiled into $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out. Will adding the bond check keep us within budget?",
+      "prompt": "I want to add a call to GAPBondMgr_FindAddr at the top of HCI_SendDataPkt in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/hci/cc26xx/hci.c to verify the peer is bonded before sending data. The HCI data path must complete within 10μs at 48 MHz (480 cycles total). Both functions are compiled into $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out. Will adding exceed the targeted execution time?",
       "expected_output": "A preflight report where the skill runs asm-analyze extract-cfg on GAPBondMgr_FindAddr from basic_ble.out and flags a latency risk: GAPBondMgr_FindAddr performs NV storage reads and RPA resolution loop iterations, which cannot complete within a 480-cycle budget. Execution fit should be ADJUST PLAN or STOP.",
       "files": [],
       "assertions": [

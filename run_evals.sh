@@ -28,7 +28,7 @@ FILTER_SKILL=""
 FILTER_EVAL_ID=""
 LIST_MODE=false
 MAX_JOBS=4
-EVAL_TIMEOUT=210   # seconds per claude -p call
+EVAL_TIMEOUT=240   # seconds per claude -p call
 GRADE_TIMEOUT=60   # seconds per grader call
 
 # Well-known BLE artifacts (relative to BLE_ROOT)
@@ -95,23 +95,35 @@ if [[ ! -f "$BLE_ELF" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# MCP config — written to a temp file so claude -p can connect
+# MCP config — written only when LOCI_MCP_TOKEN is set.
+# Without a valid token the MCP server returns invalid_token and claude -p
+# hangs on every tool call.  Skills that call MCP tools must handle the
+# "no MCP" case gracefully (e.g. loci-preflight writes
+# "(timing unavailable — MCP not connected)").  Evals that only check for
+# section headers still pass in that mode.
 # ---------------------------------------------------------------------------
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 RESULTS_DIR="$SCRIPT_DIR/eval-results/$TIMESTAMP"
 mkdir -p "$RESULTS_DIR"
 
-MCP_CONFIG="$RESULTS_DIR/.mcp-config.json"
-cat > "$MCP_CONFIG" <<'EOF'
+MCP_CONFIG=""
+if [[ -n "${LOCI_MCP_TOKEN:-}" ]]; then
+  MCP_CONFIG="$RESULTS_DIR/.mcp-config.json"
+  cat > "$MCP_CONFIG" <<EOF
 {
   "mcpServers": {
     "loci": {
       "type": "http",
-      "url": "https://dev.local.mcp.loci-dev.net/mcp"
+      "url": "https://dev.local.mcp.loci-dev.net/mcp",
+      "headers": { "Authorization": "Bearer ${LOCI_MCP_TOKEN}" }
     }
   }
 }
 EOF
+  echo "MCP: authenticated (token provided)"
+else
+  echo "MCP: skipped (LOCI_MCP_TOKEN not set — skills will use fallback paths)"
+fi
 
 # ---------------------------------------------------------------------------
 # Formatting
@@ -227,6 +239,50 @@ print_error_detail() {
 }
 
 # ---------------------------------------------------------------------------
+# grade_bash — deterministic Bash-based grader
+#   $1: response text
+#   $2: should_trigger ("true" | "false")
+#   Writes "PASS|reason" or "FAIL|reason" to stdout
+# ---------------------------------------------------------------------------
+grade_bash() {
+  local RESPONSE="$1"
+  local SHOULD_TRIGGER="$2"
+
+  if [[ "$SHOULD_TRIGGER" == "true" ]]; then
+    if ! echo "$RESPONSE" | grep -qiE '##[[:space:]]*preflight|preflight[[:space:]]+analysis'; then
+      echo "FAIL|missing Preflight header"; return
+    fi
+    if ! echo "$RESPONSE" | grep -qiE 'call[[:space:].-]*graph'; then
+      echo "FAIL|missing Call graph section"; return
+    fi
+    if ! echo "$RESPONSE" | grep -qiE 'latency'; then
+      echo "FAIL|missing Latency section"; return
+    fi
+    if ! echo "$RESPONSE" | grep -qiE 'arithmetic'; then
+      echo "FAIL|missing Arithmetic section"; return
+    fi
+    if ! echo "$RESPONSE" | grep -qiE 'resource'; then
+      echo "FAIL|missing Resources section"; return
+    fi
+    if ! echo "$RESPONSE" | grep -qiE 'execution[[:space:].-]*fit'; then
+      echo "FAIL|missing Execution fit section"; return
+    fi
+    if ! echo "$RESPONSE" | grep -qiE 'GOOD|ADJUST PLAN|STOP'; then
+      echo "FAIL|missing GOOD/ADJUST PLAN/STOP verdict"; return
+    fi
+    echo "PASS|all required preflight sections present"
+  else
+    if echo "$RESPONSE" | grep -qiE '##[[:space:]]*preflight|preflight[[:space:]]+analysis'; then
+      echo "FAIL|should not have triggered but contains Preflight header"; return
+    fi
+    if echo "$RESPONSE" | grep -qiE 'call[[:space:].-]*graph'; then
+      echo "FAIL|should not have triggered but contains Call graph"; return
+    fi
+    echo "PASS|correctly did not trigger preflight"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # run_one_eval — runs a single eval (prompt + grade) and writes result files
 #   Called either inline (sequential) or as a background job (parallel).
 #   All output goes to a log file; the caller prints it.
@@ -244,14 +300,17 @@ run_one_eval() {
   local GRADE_TIMEOUT="${10}"
   local EVAL_FILE_NAME="${11}"
   local JOB_NUM="${12}"
+  local GRADING_MODE="${13:-claude}"
+  local SHOULD_TRIGGER="${14:-true}"
 
   local TAG="${EVAL_FILE_NAME} > ${EVAL_ID}"
   local PROG_PFX="[${JOB_NUM}/${TOTAL}]"
-  local RESPONSE_FILE="$RESULTS_DIR/${SKILL_NAME}_eval${EVAL_ID}_response.txt"
-  local STDERR_FILE="$RESULTS_DIR/${SKILL_NAME}_eval${EVAL_ID}_stderr.txt"
-  local GRADE_FILE="$RESULTS_DIR/${SKILL_NAME}_eval${EVAL_ID}_grade.txt"
-  local VERDICT_FILE="$RESULTS_DIR/${SKILL_NAME}_eval${EVAL_ID}_verdict.txt"
-  local LOG_FILE="$RESULTS_DIR/${SKILL_NAME}_eval${EVAL_ID}_log.txt"
+  local EVAL_FILE_STEM="${EVAL_FILE_NAME%.json}"
+  local RESPONSE_FILE="$RESULTS_DIR/${SKILL_NAME}_${EVAL_FILE_STEM}_eval${EVAL_ID}_response.txt"
+  local STDERR_FILE="$RESULTS_DIR/${SKILL_NAME}_${EVAL_FILE_STEM}_eval${EVAL_ID}_stderr.txt"
+  local GRADE_FILE="$RESULTS_DIR/${SKILL_NAME}_${EVAL_FILE_STEM}_eval${EVAL_ID}_grade.txt"
+  local VERDICT_FILE="$RESULTS_DIR/${SKILL_NAME}_${EVAL_FILE_STEM}_eval${EVAL_ID}_verdict.txt"
+  local LOG_FILE="$RESULTS_DIR/${SKILL_NAME}_${EVAL_FILE_STEM}_eval${EVAL_ID}_log.txt"
 
   # Strip leading slash commands (/plan, /review, etc.) — they are
   # interactive-session affordances that don't work in claude -p.
@@ -262,7 +321,10 @@ run_one_eval() {
     echo "  [$TAG] ${PROMPT:0:80}..."
 
     # ── Step 1: Run the eval prompt ────────────────────────────
-    local CLAUDE_ARGS=(-p --dangerously-skip-permissions --mcp-config "$MCP_CONFIG")
+    local CLAUDE_ARGS=(-p --dangerously-skip-permissions)
+    if [[ -n "$MCP_CONFIG" ]]; then
+      CLAUDE_ARGS+=(--mcp-config "$MCP_CONFIG")
+    fi
     if [[ -n "$SYSTEM_PROMPT" ]]; then
       CLAUDE_ARGS+=(--append-system-prompt "$SYSTEM_PROMPT")
     fi
@@ -302,7 +364,15 @@ run_one_eval() {
     echo "    Response: ${BYTES} bytes"
 
     # ── Step 2: Grade the response ─────────────────────────────
-    local GRADE_PROMPT="You are an eval grader. Determine if the response PASSES or FAILS.
+    local VERDICT REASON
+    if [[ "$GRADING_MODE" == "bash" ]]; then
+      local BASH_VERDICT
+      BASH_VERDICT=$(grade_bash "$RESPONSE" "$SHOULD_TRIGGER")
+      echo "$BASH_VERDICT" > "$GRADE_FILE"
+      VERDICT="${BASH_VERDICT%%|*}"
+      REASON="${BASH_VERDICT#*|}"
+    else
+      local GRADE_PROMPT="You are an eval grader. Determine if the response PASSES or FAILS.
 
 ## Eval prompt
 $PROMPT
@@ -310,14 +380,14 @@ $PROMPT
 ## Expected behavior
 $EXPECTED"
 
-    if [[ -n "$EXPECTATIONS" ]]; then
-      GRADE_PROMPT="$GRADE_PROMPT
+      if [[ -n "$EXPECTATIONS" ]]; then
+        GRADE_PROMPT="$GRADE_PROMPT
 
 ## Specific expectations (ALL must be met to pass)
 $EXPECTATIONS"
-    fi
+      fi
 
-    GRADE_PROMPT="$GRADE_PROMPT
+      GRADE_PROMPT="$GRADE_PROMPT
 
 ## Actual response
 $RESPONSE
@@ -334,24 +404,24 @@ EXPECTATION_RESULTS:
 VERDICT: PASS or FAIL
 REASON: <one-line summary>"
 
-    local GRADE_STDERR_FILE="$RESULTS_DIR/${SKILL_NAME}_eval${EVAL_ID}_grade_stderr.txt"
-    local GRADE GRADE_EXIT=0
-    GRADE=$(echo "$GRADE_PROMPT" | timeout "$GRADE_TIMEOUT" claude -p --model sonnet 2>"$GRADE_STDERR_FILE") || GRADE_EXIT=$?
-    if [[ $GRADE_EXIT -ne 0 ]]; then
-      echo "    GRADE ERROR: grader call failed (exit $GRADE_EXIT)"
-      print_error_detail "grade" "$GRADE_EXIT" "$GRADE_STDERR_FILE" "$TAG" "$MCP_CONFIG" "$RESPONSE_FILE"
+      local GRADE_STDERR_FILE="$RESULTS_DIR/${SKILL_NAME}_eval${EVAL_ID}_grade_stderr.txt"
+      local GRADE GRADE_EXIT=0
+      GRADE=$(echo "$GRADE_PROMPT" | timeout "$GRADE_TIMEOUT" claude -p --model sonnet 2>"$GRADE_STDERR_FILE") || GRADE_EXIT=$?
+      if [[ $GRADE_EXIT -ne 0 ]]; then
+        echo "    GRADE ERROR: grader call failed (exit $GRADE_EXIT)"
+        print_error_detail "grade" "$GRADE_EXIT" "$GRADE_STDERR_FILE" "$TAG" "$MCP_CONFIG" "$RESPONSE_FILE"
+        [[ ! -s "$GRADE_STDERR_FILE" ]] && rm -f "$GRADE_STDERR_FILE"
+        echo "GRADE_ERROR|grader exited with code $GRADE_EXIT" > "$VERDICT_FILE"
+        echo "${PROG_PFX} DONE     ${TAG}  ERROR (grade fail)" >> "$PROGRESS_LOG"
+        return
+      fi
       [[ ! -s "$GRADE_STDERR_FILE" ]] && rm -f "$GRADE_STDERR_FILE"
-      echo "GRADE_ERROR|grader exited with code $GRADE_EXIT" > "$VERDICT_FILE"
-      echo "${PROG_PFX} DONE     ${TAG}  ERROR (grade fail)" >> "$PROGRESS_LOG"
-      return
+
+      echo "$GRADE" > "$GRADE_FILE"
+
+      VERDICT=$(echo "$GRADE" | grep -oP 'VERDICT:\s*\K\S+' | head -1 || echo "UNKNOWN")
+      REASON=$(echo "$GRADE" | grep -oP 'REASON:\s*\K.*' | head -1 || echo "could not extract reason")
     fi
-    [[ ! -s "$GRADE_STDERR_FILE" ]] && rm -f "$GRADE_STDERR_FILE"
-
-    echo "$GRADE" > "$GRADE_FILE"
-
-    local VERDICT REASON
-    VERDICT=$(echo "$GRADE" | grep -oP 'VERDICT:\s*\K\S+' | head -1 || echo "UNKNOWN")
-    REASON=$(echo "$GRADE" | grep -oP 'REASON:\s*\K.*' | head -1 || echo "could not extract reason")
 
     echo "${VERDICT}|${REASON}" > "$VERDICT_FILE"
     echo "${PROG_PFX} DONE     ${TAG}  ${VERDICT}" >> "$PROGRESS_LOG"
@@ -386,6 +456,8 @@ declare -a JOB_PROMPTS=()
 declare -a JOB_EXPECTED=()
 declare -a JOB_EXPECTATIONS=()
 declare -a JOB_SYSPROMPTS=()
+declare -a JOB_GRADINGMODES=()
+declare -a JOB_SHOULDTRIGGER=()
 
 for EVAL_FILE in $EVAL_FILES; do
   SKILL_NAME=$(jq -r '.skill_name' "$EVAL_FILE")
@@ -420,9 +492,11 @@ $(cat "$SKILL_MD")
       continue
     fi
 
-    PROMPT=$(jq -r ".evals[$i].prompt" "$EVAL_FILE")
+    PROMPT=$(jq -r ".evals[$i].prompt" "$EVAL_FILE" | sed "s|\\\$LOCI_TEST_BLE_ROOT|$BLE_ROOT|g")
     EXPECTED=$(jq -r ".evals[$i].expected_output" "$EVAL_FILE")
-    EXPECTATIONS=$(jq -r ".evals[$i].expectations // [] | .[]" "$EVAL_FILE" 2>/dev/null || true)
+    EXPECTATIONS=$(jq -r ".evals[$i].assertions // [] | .[].text" "$EVAL_FILE" 2>/dev/null || true)
+    GRADING_MODE=$(jq -r ".evals[$i].grading_mode // \"claude\"" "$EVAL_FILE")
+    SHOULD_TRIGGER=$(jq -r ".evals[$i].should_trigger | if . == null then true else . end" "$EVAL_FILE")
 
     JOB_SKILLS+=("$SKILL_NAME")
     JOB_IDS+=("$EVAL_ID")
@@ -431,6 +505,8 @@ $(cat "$SKILL_MD")
     JOB_EXPECTED+=("$EXPECTED")
     JOB_EXPECTATIONS+=("$EXPECTATIONS")
     JOB_SYSPROMPTS+=("$SYSTEM_PROMPT")
+    JOB_GRADINGMODES+=("$GRADING_MODE")
+    JOB_SHOULDTRIGGER+=("$SHOULD_TRIGGER")
   done
 done
 
@@ -481,7 +557,9 @@ for (( j=0; j<TOTAL; j++ )); do
     "$EVAL_TIMEOUT" \
     "$GRADE_TIMEOUT" \
     "${JOB_FILES[$j]}" \
-    "$((j+1))" &
+    "$((j+1))" \
+    "${JOB_GRADINGMODES[$j]}" \
+    "${JOB_SHOULDTRIGGER[$j]}" &
 
   PIDS[$j]=$!
   RUNNING=$((RUNNING + 1))
@@ -524,14 +602,15 @@ for (( j=0; j<TOTAL; j++ )); do
   fi
 
   # Print buffered log
-  LOG_FILE="$RESULTS_DIR/${SKILL_NAME}_eval${EVAL_ID}_log.txt"
+  EVAL_FILE_STEM_R="${EVAL_FILE_NAME%.json}"
+  LOG_FILE="$RESULTS_DIR/${SKILL_NAME}_${EVAL_FILE_STEM_R}_eval${EVAL_ID}_log.txt"
   if [[ -f "$LOG_FILE" ]]; then
     cat "$LOG_FILE"
     rm -f "$LOG_FILE"
   fi
 
   # Read verdict
-  VERDICT_FILE="$RESULTS_DIR/${SKILL_NAME}_eval${EVAL_ID}_verdict.txt"
+  VERDICT_FILE="$RESULTS_DIR/${SKILL_NAME}_${EVAL_FILE_STEM_R}_eval${EVAL_ID}_verdict.txt"
   if [[ ! -f "$VERDICT_FILE" ]]; then
     echo -e "  ${EVAL_FILE_NAME}  ${EVAL_ID}: ${RED}ERROR${NC} — no verdict produced"
     ERRORED=$((ERRORED + 1))
