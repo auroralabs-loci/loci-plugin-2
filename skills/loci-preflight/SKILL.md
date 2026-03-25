@@ -146,6 +146,14 @@ text-format optimized for LLM analysis.
 The JSON output contains `timing_csv` and `timing_architecture` fields needed
 for the MCP call.
 
+the calls for extracting fields from the json output:
+
+  data = json.load(...)
+  cfg_text = data["control_flow_graph"]    # all functions, annotated CFG blocks
+  timing_csv = data["timing_csv"]          # per-block CSV for MCP
+  timing_architecture = data["timing_architecture"]    # timing architecture
+
+
 ### Timing and energy via LOCI MCP
 
 Immediately after extraction, get hardware-accurate timing and energy for the
