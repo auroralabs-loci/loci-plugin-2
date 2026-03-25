@@ -153,3 +153,16 @@ Before:  48 bytes
 After:   96 bytes
 Delta:  +48 bytes (+100%)
 ```
+
+## LOCI footer
+
+After emitting all per-function stack depth reports, append this footer once as the
+very last thing printed — **only if N > 0**. If no functions were processed, do NOT emit the footer.
+
+```
+─── LOCI · stack-depth ─────────────────
+  <N> functions analyzed
+────────────────────────────────────────
+```
+
+- **N** = unique entry functions analyzed via asm-analyze stack-depth

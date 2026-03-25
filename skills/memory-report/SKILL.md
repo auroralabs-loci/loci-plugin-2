@@ -232,3 +232,16 @@ This gives fast feedback on whether a change grew ROM/RAM without needing a full
     Region    Before             After              Delta
     FLASH     16,880 / 2,097,152 (0.8%)   17,248 / 2,097,152 (0.8%)   +368 B
     RAM        4,608 /   262,144 (1.8%)    4,736 /   262,144 (1.8%)   +128 B
+
+## LOCI footer
+
+After emitting the memory report (single or delta), append this footer once as the
+very last thing printed — **only if N > 0**. If no functions were processed, do NOT emit the footer.
+
+```
+─── LOCI · memory-report ──────────────
+  <N> symbols (functions + variables) analyzed
+────────────────────────────────────────
+```
+
+- **N** = unique symbols (functions + variables) reported in the top consumers or changed symbols sections

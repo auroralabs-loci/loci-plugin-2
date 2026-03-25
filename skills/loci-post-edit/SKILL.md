@@ -163,3 +163,18 @@ Energy:       XXX.XX uWs
 ### Control Flow
 <CFG analysis>
 ```
+
+## LOCI footer
+
+After emitting all per-function reports, append this footer once as the very
+last thing printed — **only if N > 0**. If no functions were processed, do NOT emit the footer.
+
+```
+─── LOCI · post-edit ───────────────────
+  <N> functions · <M> MCP calls for execution behavior
+────────────────────────────────────────
+```
+
+- **N** = unique functions (modified + added) whose assembly was sent to LOCI
+- **M** = MCP calls to `mcp__loci-plugin__get_assembly_block_exec_behavior` (exec-behaviors)
+  (typically 2 for modified functions: pre + post; 1 for added functions)
