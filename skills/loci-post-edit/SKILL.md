@@ -94,6 +94,13 @@ The JSON output contains `timing_csv` and `timing_architecture` fields needed
 for the MCP call.
 The JSON also contains the `control_flow_graph` field that contains annotated CFG's in text-format optimized for LLM analysis.
 
+the calls for extracting fields from the json output:
+
+  data = json.load(...)
+  cfg_text = data["control_flow_graph"]    # all functions, annotated CFG blocks
+  timing_csv = data["timing_csv"]          # per-block CSV for MCP
+  timing_architecture = data["timing_architecture"]    # timing architecture
+
 ## Step 4: LOCI MCP timing — compute % diff
 
 Call `mcp__loci-plugin__get_assembly_block_exec_behavior` with:
