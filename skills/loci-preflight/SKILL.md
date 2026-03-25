@@ -260,3 +260,18 @@ plan, not just add comments:
 
 Write the adjusted plan, then write the code. Do not write the code and then
 note risks afterward — that defeats the purpose.
+
+## LOCI footer
+
+After emitting the preflight report (or all-clear shorthand), append this footer
+as the last thing printed — **only if N > 0** (at least one function was sent to LOCI).
+If no functions were processed (MCP unavailable or no callees to measure), do NOT emit the footer.
+
+```
+─── LOCI · preflight ───────────────────
+  <N> functions · <M> MCP calls for execution behavior
+────────────────────────────────────────
+```
+
+- **N** = unique callee functions whose assembly was sent to LOCI
+- **M** = MCP calls to `mcp__loci-plugin__get_assembly_block_exec_behavior` (exec-behaviors)

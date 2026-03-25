@@ -76,3 +76,17 @@ If no `.o` exists yet, fall through to full compilation.
    - using the annotated CFG (Control Flow Graphs) from the `control_flow_graph` field from step 2, select a most likely execution path to do performance analysis on with the timing data.
    - highlight the hottest blocks in source code if source code info is available in the annotated CFG s
 
+## LOCI footer
+
+After reporting timing results, append this footer as the last thing printed —
+**only if N > 0**. If no functions were processed, do NOT emit the footer.
+
+```
+─── LOCI · exec-trace ──────────────────
+  <N> functions · <M> MCP calls for execution behavior
+────────────────────────────────────────
+```
+
+- **N** = unique functions whose assembly was sent to LOCI
+- **M** = MCP calls to `mcp__loci-plugin__get_assembly_block_exec_behavior` (exec-behaviors)
+
