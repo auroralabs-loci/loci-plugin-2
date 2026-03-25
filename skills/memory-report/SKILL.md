@@ -1,15 +1,18 @@
 ---
 name: memory-report
 description: >
-  ROM/RAM memory usage analysis: section breakdown, top consumers, and region
-  budgets from compiled ELF binaries. Invoke when the user says "memory report",
-  "memory usage", "ROM/RAM usage", "how much flash", "how much RAM", "memory
-  footprint", "memory map", "what uses the most memory", "show me the memory
-  breakdown". Also invoke when the user asks about the memory impact of a code
-  change — "how did this change affect memory", "did this add or remove memory",
-  "memory delta", "memory diff", "size impact of the change", "did I grow flash",
-  "did I save RAM". Use delta mode (--comparing-elf-path) when comparing before
-  and after a change.
+  ROM/RAM memory usage analysis for embedded firmware: section breakdown, top
+  consumers, and region budgets from compiled ELF binaries. Only invoke when the
+  project involves embedded/firmware development with ELF binaries (.elf, .out,
+  .o, .axf) — do NOT invoke for general-purpose applications, web projects, or
+  scripts that have no flash/ROM/RAM constraints. Invoke when the user says
+  "memory report", "memory usage", "ROM/RAM usage", "how much flash", "how much
+  RAM", "memory footprint", "memory map", "what uses the most memory", "show me
+  the memory breakdown". Also invoke when the user asks about the memory impact
+  of a code change — "how did this change affect memory", "did this add or remove
+  memory", "memory delta", "memory diff", "size impact of the change", "did I
+  grow flash", "did I save RAM". Use delta mode (--comparing-elf-path) when
+  comparing before and after a change.
 ---
 
 # LOCI Memory Report
