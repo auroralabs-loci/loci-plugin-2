@@ -616,6 +616,20 @@ def get_cfg_text(detected_arch, files, functions):
     return cfg_text
 
 
+def memmap(elf_path: str,
+           comparing_elf_path: str | None = None,
+           map_file: str | None = None,
+           top_n: int = 10) -> dict:
+    """Delegate to loci-service-asmslicer's memmap module."""
+    from loci.service.asmslicer.memmap import memmap as _memmap
+    return _memmap(
+        elf_path=elf_path,
+        comparing_elf_path=comparing_elf_path,
+        map_file=map_file,
+        top_n=top_n,
+    )
+
+
 def stack_depth(elf_path: str | None = None,
                 asm_path: str | None = None,
                 callgraph_dot_path: str | None = None,
@@ -761,6 +775,19 @@ def main():
     p_stack.add_argument("--unknown-callee-size", type=int, default=64,
                          help="Assumed frame size in bytes for unknown/external callees (default: 64)")
 
+    # memmap
+    p_memmap = subparsers.add_parser(
+        "memmap",
+        help="ROM/RAM memory usage report from ELF section and symbol analysis",
+    )
+    p_memmap.add_argument("--elf-path", required=True, help="Path to the ELF binary or .o file")
+    p_memmap.add_argument("--comparing-elf-path", default=None,
+                           help="Path to a second ELF to compare against (enables delta report)")
+    p_memmap.add_argument("--map-file", default=None,
+                           help="Path to GCC linker map file (enables region budgets)")
+    p_memmap.add_argument("--top-n", type=int, default=10,
+                           help="Number of top consumers to report per category (default: 10)")
+
     args = parser.parse_args()
 
     try:
@@ -817,6 +844,13 @@ def main():
                 threshold=args.threshold,
                 max_recursion_depth=args.max_recursion_depth,
                 unknown_callee_size=args.unknown_callee_size,
+            )
+        elif args.command == "memmap":
+            result = memmap(
+                elf_path=args.elf_path,
+                comparing_elf_path=args.comparing_elf_path,
+                map_file=args.map_file,
+                top_n=args.top_n,
             )
         else:
             result = {"error": f"Unknown command: {args.command}"}
