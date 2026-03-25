@@ -6,7 +6,7 @@
   "evals": [
 
     {
-      "id": 1,
+      "id": "sd-1",
       "category": "full-elf-entry-function",
       "prompt": "Analyze the stack depth for GAPBondMgr_ProcessEvent in $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R5/ble5stack/basic_ble/freertos/ticlang/basic_ble.out. No stack budget — just show me the worst-case depth and the call path.",
       "expected_output": "Runs asm-analyze stack-depth with --elf-path and --entry-functions GAPBondMgr_ProcessEvent. Reports worst-case depth in bytes, the worst-case call path as a chain of function names, average depth, and per-function frame sizes along the worst path. Does not report a verdict since no budget was provided.",
@@ -36,7 +36,7 @@
     },
 
     {
-      "id": 2,
+      "id": "sd-2",
       "category": "full-elf-with-budget",
       "prompt": "Run stack depth analysis on GAPBondMgr_ProcessEvent in $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R5/ble5stack/basic_ble/freertos/ticlang/basic_ble.out with a stack budget of 768 bytes and a 50% threshold.",
       "expected_output": "Runs asm-analyze stack-depth with --elf-path, --entry-functions, --stack-budget 768, and --threshold 50. Reports worst-case depth, usage as a percentage of 768 bytes, and a PASS or FAIL verdict against the 50% threshold (384 bytes). Also reports the worst-case path and per-function frames.",
@@ -62,7 +62,7 @@
     },
 
     {
-      "id": 3,
+      "id": "sd-3",
       "category": "multi-function",
       "prompt": "Analyze stack depth for all root functions in $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R5/ble5stack/basic_ble/freertos/ticlang/basic_ble.out. Don't specify entry functions — let the tool auto-detect them.",
       "expected_output": "Runs asm-analyze stack-depth with --elf-path but without --entry-functions, letting the tool auto-detect root functions. Reports per-function results for multiple entry points, each with worst-case depth, path, and frame sizes.",
@@ -84,7 +84,7 @@
     },
 
     {
-      "id": 4,
+      "id": "sd-4",
       "category": "recursion-warning",
       "prompt": "Analyze stack depth for osal_msg_send in $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R5/ble5stack/basic_ble/freertos/ticlang/basic_ble.out. I suspect there may be recursive calls in the chain. Use --max-recursion-depth 3.",
       "expected_output": "Runs asm-analyze stack-depth with --entry-functions osal_msg_send and --max-recursion-depth 3. If recursion is detected, reports a warning about the recursive call and notes the depth is bounded to 3 iterations. If no recursion is found, reports the depth normally. Either way, the tool should handle the flag and report clearly.",
@@ -106,7 +106,7 @@
     },
 
     {
-      "id": 5,
+      "id": "sd-5",
       "category": "graceful-degradation",
       "prompt": "Run stack depth analysis. Session context: Target: x86_64, Compiler: gcc, LOCI target: x86_64. The binary is at build/app.elf.",
       "expected_output": "Detects that x86_64 is not a supported LOCI target architecture. Lists the supported architectures (aarch64, cortexm/armv7e-m, tricore/tc3xx) and stops without fabricating any stack depth numbers.",

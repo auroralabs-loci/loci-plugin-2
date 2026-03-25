@@ -6,7 +6,7 @@
   "evals": [
 
     {
-      "id": 1,
+      "id": "mr-1",
       "category": "single-elf-report",
       "prompt": "Analyze the ROM/RAM memory usage of $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R5/ble5stack/basic_ble/freertos/ticlang/basic_ble.out. No map file — just show me the section breakdown, summary, and top consumers. Session says Target: armv7e-m, Compiler: arm-none-eabi-gcc, LOCI target: armv7e-m.",
       "expected_output": "Runs asm-analyze memmap with --elf-path pointing to basic_ble.out. Reports a section breakdown table with section names, addresses, sizes, types, and memory regions. Reports ROM/RAM summary totals with code/rodata/data/bss breakdown. Reports top ROM consumers (functions) and top RAM consumers (variables) by size. Does not report memory region budgets since no map file was provided (memory_regions is null).",
@@ -36,7 +36,7 @@
     },
 
     {
-      "id": 2,
+      "id": "mr-2",
       "category": "single-elf-with-map",
       "prompt": "Show me the memory usage of $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R5/ble5stack/basic_ble/freertos/ticlang/basic_ble.out with the linker map file at $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R5/ble5stack/basic_ble/freertos/ticlang/basic_ble.map. I want to see how much of each memory region is used. Session says Target: armv7e-m, Compiler: arm-none-eabi-gcc, LOCI target: armv7e-m.",
       "expected_output": "Runs asm-analyze memmap with --elf-path pointing to basic_ble.out and --map-file pointing to basic_ble.map. Reports section breakdown, ROM/RAM summary, and top consumers as in a normal report. Additionally reports memory region budgets showing per-region used bytes, total bytes, and usage percentage. If the map file is not found or cannot be parsed, the report still completes but notes that memory regions are unavailable.",
@@ -58,7 +58,7 @@
     },
 
     {
-      "id": 3,
+      "id": "mr-3",
       "category": "delta-comparison",
       "prompt": "Compare memory usage between two builds. The new binary is $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R5/ble5stack/basic_ble/freertos/ticlang/basic_ble.out and the old binary is $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R5/ble5stack/data_stream/freertos/ticlang/data_stream.out. Show me what changed. Session says Target: armv7e-m, Compiler: arm-none-eabi-gcc, LOCI target: armv7e-m.",
       "expected_output": "Runs asm-analyze memmap with --elf-path pointing to basic_ble.out and --comparing-elf-path pointing to data_stream.out. Reports section deltas showing before/after/delta sizes for each section. Reports ROM/RAM summary deltas with total changes and percentages. Reports symbol-level deltas showing added, removed, or changed symbols sorted by delta size. Does not report memory region budget deltas since no map file was provided.",
@@ -88,7 +88,7 @@
     },
 
     {
-      "id": 4,
+      "id": "mr-4",
       "category": "object-file-report",
       "prompt": "I have a compiled object file at build/sensor_driver.o. Analyze its memory usage. Session says Target: armv7e-m, Compiler: arm-none-eabi-gcc, LOCI target: armv7e-m.",
       "expected_output": "Runs asm-analyze memmap with --elf-path pointing to build/sensor_driver.o. Recognizes it as a relocatable object file (not a linked executable). Reports section sizes and types but notes that addresses are zero-based (no linker placement). Reports ROM and RAM estimates. Notes that memory regions are not available for object files. Does not attempt to use a map file.",
@@ -114,7 +114,7 @@
     },
 
     {
-      "id": 5,
+      "id": "mr-5",
       "category": "graceful-degradation",
       "prompt": "Analyze memory usage of my firmware. Session context: Target: x86_64, Compiler: gcc, LOCI target: x86_64. The binary is at build/app.elf.",
       "expected_output": "Detects that x86_64 is not a supported LOCI target architecture. Lists the supported architectures (aarch64, armv7e-m, armv6-m, tc3xx) and stops without running memmap or fabricating any memory usage numbers.",
