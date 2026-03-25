@@ -1,7 +1,7 @@
 # Skill Benchmark: loci-preflight
 
 **Model**: <model-name>
-**Date**: 2026-03-18T10:55:21Z
+**Date**: 2026-03-25T12:58:48Z
 **Evals**: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 (3 runs each per configuration)
 
 ## Summary

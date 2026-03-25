@@ -1,0 +1,37 @@
+{
+  "eval_id": "pf-critical-1",
+  "eval_name": "invoke-plan-mode-implement-clockp-construct",
+  "configuration": "without_skill",
+  "expectations": [
+    {
+      "text": "Response includes a '## Preflight:' section header",
+      "passed": false,
+      "evidence": "No preflight block in response — baseline Claude went directly to explaining the existing guard and producing a plan without any preflight analysis"
+    },
+    {
+      "text": "Preflight block contains a 'Call graph:' line",
+      "passed": false,
+      "evidence": "No preflight block present"
+    },
+    {
+      "text": "Preflight block contains a 'Latency:' line",
+      "passed": false,
+      "evidence": "No preflight block present"
+    },
+    {
+      "text": "Preflight block contains an 'Arithmetic:' line",
+      "passed": false,
+      "evidence": "No preflight block present"
+    },
+    {
+      "text": "Preflight block contains a 'Resources:' line",
+      "passed": false,
+      "evidence": "No preflight block present"
+    },
+    {
+      "text": "Preflight block contains an 'Execution fit:' line with value GOOD, ADJUST PLAN, or STOP",
+      "passed": false,
+      "evidence": "No preflight block present"
+    }
+  ]
+}

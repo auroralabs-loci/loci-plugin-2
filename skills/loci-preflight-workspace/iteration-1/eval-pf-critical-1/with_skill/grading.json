@@ -1,0 +1,37 @@
+{
+  "eval_id": "pf-critical-1",
+  "eval_name": "invoke-plan-mode-implement-clockp-construct",
+  "configuration": "with_skill",
+  "expectations": [
+    {
+      "text": "Response includes a '## Preflight:' section header",
+      "passed": true,
+      "evidence": "Line 11: '## Preflight: ClockP_construct'"
+    },
+    {
+      "text": "Preflight block contains a 'Call graph:' line",
+      "passed": true,
+      "evidence": "Line 79: 'Call graph:  OK — guard already present; no callee is reachable on the NULL path'"
+    },
+    {
+      "text": "Preflight block contains a 'Latency:' line",
+      "passed": true,
+      "evidence": "Line 80: 'Latency:     (timing unavailable — Bash execution blocked; binary CFG not extracted)'"
+    },
+    {
+      "text": "Preflight block contains an 'Arithmetic:' line",
+      "passed": true,
+      "evidence": "Line 81: 'Arithmetic:  OK'"
+    },
+    {
+      "text": "Preflight block contains a 'Resources:' line",
+      "passed": true,
+      "evidence": "Line 82: 'Resources:   OK'"
+    },
+    {
+      "text": "Preflight block contains an 'Execution fit:' line with value GOOD, ADJUST PLAN, or STOP",
+      "passed": true,
+      "evidence": "Line 84: 'Execution fit: GOOD'"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "eval_id": "pf-critical-1",
+  "eval_name": "invoke-plan-mode-implement-clockp-construct",
+  "prompt": "/plan Implement a guard in ClockP_construct in /home/melisa/BLE/kernel/freertos/dpl/ClockP_freertos.c so it returns NULL immediately if clockFxn is NULL, before any timer setup occurs.",
+  "assertions": [
+    {
+      "text": "Response includes a '## Preflight:' section header",
+      "description": "/plan + 'Implement' must trigger the skill"
+    },
+    {
+      "text": "Preflight block contains a 'Call graph:' line",
+      "description": "Required preflight section"
+    },
+    {
+      "text": "Preflight block contains a 'Latency:' line",
+      "description": "Required preflight section"
+    },
+    {
+      "text": "Preflight block contains an 'Arithmetic:' line",
+      "description": "Required preflight section"
+    },
+    {
+      "text": "Preflight block contains a 'Resources:' line",
+      "description": "Required preflight section"
+    },
+    {
+      "text": "Preflight block contains an 'Execution fit:' line with value GOOD, ADJUST PLAN, or STOP",
+      "description": "Execution fit must be present and use an allowed value"
+    }
+  ]
+}
