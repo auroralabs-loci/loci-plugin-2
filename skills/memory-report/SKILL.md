@@ -1,6 +1,15 @@
 ---
-description: Analyze ROM/RAM memory usage from compiled ELF binaries using section and symbol analysis
-disable-model-invocation: true
+name: memory-report
+description: >
+  ROM/RAM memory usage analysis: section breakdown, top consumers, and region
+  budgets from compiled ELF binaries. Invoke when the user says "memory report",
+  "memory usage", "ROM/RAM usage", "how much flash", "how much RAM", "memory
+  footprint", "memory map", "what uses the most memory", "show me the memory
+  breakdown". Also invoke when the user asks about the memory impact of a code
+  change — "how did this change affect memory", "did this add or remove memory",
+  "memory delta", "memory diff", "size impact of the change", "did I grow flash",
+  "did I save RAM". Use delta mode (--comparing-elf-path) when comparing before
+  and after a change.
 ---
 
 # LOCI Memory Report
