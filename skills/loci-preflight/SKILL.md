@@ -1,7 +1,7 @@
 ---
 name: loci-preflight
 description: >
-  Pre-execution analysis: Pre-execution analysis: before writing or editing any function, reason
+  Pre-execution analysis: before writing or editing any function, reason
   through control-flow and timing/energy analysis on existing callees using compiled
   artifacts to assess execution fit before touching the code. Run this during
   planning — not at write time. Invoke ONLY when BOTH conditions are true: (1)
