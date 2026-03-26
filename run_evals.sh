@@ -105,7 +105,8 @@ RESULTS_DIR="$SCRIPT_DIR/eval-results/$TIMESTAMP"
 mkdir -p "$RESULTS_DIR"
 
 MCP_CONFIG=""
-PLUGIN_MCP_JSON="$(find ~/.claude/plugins/cache/loci-plugin -name plugin.json 2>/dev/null | sort -V | tail -1)"
+PLUGIN_MCP_JSON="$(find ~/.claude/plugins/cache/loci-plugin -name marketplace.json 2>/dev/null | sort -V | tail -1)"
+[[ -z "$PLUGIN_MCP_JSON" ]] && PLUGIN_MCP_JSON="$(find ~/.claude/plugins/cache/loci-plugin -name plugin.json 2>/dev/null | sort -V | tail -1)"
 if [[ -n "${LOCI_MCP_TOKEN:-}" ]]; then
   MCP_CONFIG="$RESULTS_DIR/.mcp-config.json"
   cat > "$MCP_CONFIG" <<EOF
@@ -125,10 +126,13 @@ elif [[ -z "${ANTHROPIC_API_KEY:-}" && -n "$PLUGIN_MCP_JSON" ]]; then
   # Claude's OAuth session authenticates with the MCP server directly).
   MCP_CONFIG="$RESULTS_DIR/.mcp-config.json"
   python3 -c "
-import json, sys
+import json
 with open('$PLUGIN_MCP_JSON') as f:
     p = json.load(f)
-print(json.dumps({'mcpServers': p.get('mcpServers', {})}, indent=2))
+# marketplace.json: servers nested under plugins[0].mcpServers
+# plugin.json: servers at top-level mcpServers
+servers = p.get('mcpServers') or next((pl.get('mcpServers', {}) for pl in p.get('plugins', [])), {})
+print(json.dumps({'mcpServers': servers}, indent=2))
 " > "$MCP_CONFIG"
   echo "MCP: using plugin config (OAuth session auth)"
 else
