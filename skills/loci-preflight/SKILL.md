@@ -182,35 +182,55 @@ diff_pct = ((post_value - pre_value) / pre_value) * 100
 If the MCP is unavailable, skip timing/energy and note
 "(timing/energy unavailable — MCP not connected)".
 
+### Analyze the CFG output
+
+Check the CFG text from the extract-assembly output for structural hazards:
+- **Missing declarations**: are callees present in the binary with the expected
+  signatures? If a callee is absent, flag a missing forward declaration or
+  linkage issue.
+- **Indirect calls**: any `bl` to a register in a callee's CFG — flag as a
+  potential CFI hazard.
+- **Recursion/cycles**: back edges in the CFG with no visible exit condition —
+  flag unbounded recursion.
+- **Latency**: use the MCP timing results above; flag any callee whose worst
+  path violates a timing budget, or where the cumulative hot-path chain
+  exceeds a known deadline.
+- **Energy**: use the MCP energy results above; flag any callee or hot-path
+  chain whose energy cost is notably high relative to the use case (e.g.,
+  battery-powered device, ISR context, tight power budget).
+
 ### Reason over results
 
-After receiving LOCI results, reason through the following before proceeding
-to CFG analysis or output. This is a mandatory thinking step — do not skip it
-when results look clean. Increment **R** (reasoning cycle counter) by 1 now.
+After analyzing the CFG and receiving LOCI results, reason through the
+following before proceeding to output. This is a mandatory thinking step —
+do not skip it when results look clean. Increment **R** (reasoning cycle
+counter) by 1 now.
 
 **Interpretation questions:**
 - What is this function's role in the system — is it on a hot path, ISR,
   periodic task, or called once? This determines whether any timing delta
   is critical, advisory, or irrelevant.
-- What are the downstream consequences if this function's timing increases —
-  missed deadline, reduced throughput, battery drain, or none?
-- Are these numbers expected for this function's context, or surprising?
+- If `.o.prev` exists: is `|delta| < std_dev`? If yes — change is within measurement
+  noise, treat as stable. If `|delta| > std_dev` — change is real; flag it.
+  If no `.o.prev`: this is the first measurement — record these numbers as the
+  baseline and note no prior exists for comparison.
 - Does std_dev indicate a stable path or high hardware variance — and why
   (cache sensitivity, branch misprediction, pipeline stalls visible in CFG)?
-- Does the hot-path total fit — is it tight or loose relative to the
-  function's execution context?
-- If `.o.prev` exists: is the timing drift caused by a meaningful change or
-  noise? Is it real or within measurement uncertainty (compare delta vs std_dev)?
+- Is a timing budget known from the session context? If yes, compare hot-path
+  worst against it and flag if exceeded. If no budget is known, report the
+  number and skip the fit assessment.
 - What does the CFG structure explain about the timing — which blocks
   dominate, are there expensive paths the new code will always hit?
 - Is the hot-path energy distribution balanced across callees, or does one
   callee dominate? If dominated, that callee is the leverage point — plan
   to cache its result, call it less frequently, or substitute a lighter alternative.
+- Do any CFG findings (indirect calls, recursion, missing declarations) change
+  the design — does the plan need a guard, a different callee, or a linkage fix?
 
 
 **Escalation triggers (run skill inline, then reason over its results):**
 
-*Escalate to `stack-depth`* when:
+*Escalate to `stack-depth`* when — increment R by 1 at trigger:
 - Execution context is ISR, HWI, or interrupt callback, AND call chain
   depth > 3 levels visible in CFG, OR
 - Recursion already flagged in CFG analysis above.
@@ -221,7 +241,7 @@ After stack-depth returns, reason over its results — increment R by 1:
 - Does the plan need to restructure to reduce depth?
 → adjust plan based on conclusion before proceeding.
 
-*Escalate to `memory-report`* when:
+*Escalate to `memory-report`* when — increment R by 1 at trigger:
 - The plan introduces significant new static allocations (large buffers,
   global arrays, static structs) visible from reading the source, OR
 - `.o.prev` exists and the plan grows or restructures existing data sections.
@@ -234,27 +254,29 @@ After memory-report returns, reason over its results — increment R by 1:
 - Does the plan need to reduce static footprint before proceeding?
 → adjust plan based on conclusion before proceeding.
 
-### Analyze the CFG output
+### Re-query loop
 
-Check the CFG output for call-ordering hazards:
-- **Missing declarations**: are callees present in the binary with the expected
-  signatures? If a callee is absent, flag a missing forward declaration or
-  linkage issue.
-- **Indirect calls**: any `bl` to a register in a callee's CFG — flag as a
-  potential CFI hazard.
-- **Recursion/cycles**: back edges in the CFG with no visible exit condition —
-  flag unbounded recursion.
-- **Call-order assumptions**: if the new function must be called after an
-  `init()`, check whether the callee's CFG shows any guard or assertion
-  enforcing that order. If not, flag it.
-- **Dead paths**: if the expected execution path through a callee is
-  unreachable in the CFG, flag it — the new code may never reach its target.
-- **Latency**: use the MCP timing results above; flag any callee whose worst
-  path violates a timing budget, or where the cumulative hot-path chain
-  exceeds a known deadline.
-- **Energy**: use the MCP energy results above; flag any callee or hot-path
-  chain whose energy cost is notably high relative to the use case (e.g.,
-  battery-powered device, ISR context, tight power budget).
+After reasoning, check whether a better candidate exists before committing to
+the plan. If any of the following is true, go back to **Extract assembly** with
+the alternative callees and repeat through **Reason over results**:
+
+- Reasoning identified a lighter or safer alternative callee worth evaluating
+- A flagged callee (timing violation, CFI hazard, recursion) has a named alternative
+  visible in the source files already read
+- Hot-path energy is dominated by one callee that may have a lighter variant
+- The plan for the new function changed (different call sequence, new callees
+  introduced) and those callees have not yet been measured by LOCI — re-query
+  with the new callee set before finalizing the plan
+
+Increment **R** by 1 and **M** by the number of new MCP calls for each re-query cycle.
+
+**Cycle limit: 3 re-query iterations maximum.** If the limit is reached without
+a stable plan, emit the best candidate found and note the cycle limit was hit.
+
+**Convergence condition — exit the loop when:**
+- The plan is stable (no new callees to evaluate and no unresolved flags), OR
+- All remaining flags are ✗ BLOCK (require user decision, not further querying), OR
+- The cycle limit is reached.
 
 ## Output format
 
@@ -271,6 +293,11 @@ Per-callee:
   <callee_1>:  worst=XXX.XX ns   energy=X.XX uWs
   <callee_2>:  worst=XXX.XX ns   energy=X.XX uWs
 Hot path total: worst=XXX.XX ns   energy=X.XX uWs
+
+### CFG Analysis
+  Missing declarations:  [OK | ⚠ <callee> absent — forward declaration or linkage issue]
+  Indirect calls:        [OK | ⚠ <callee>: bl to register — potential CFI hazard]
+  Recursion/cycles:      [OK | ⚠ <callee>: back edge with no visible exit condition]
 
 Call graph:  [OK | ⚠ <issue>]
 Latency:     [OK | ⚠ <callee>: worst=XXX ns exceeds budget | (timing/energy unavailable — MCP not connected)]
@@ -304,7 +331,6 @@ The value of running preflight during thinking is that findings change the
 plan, not just add comments:
 
 - A missing forward declaration → add it as a step before the function edit
-- A call-order assumption → plan to add an assert or a static_assert
 - An unbounded loop in a callee → plan to add a termination guard or budget
 - A callee timing violation → plan to cache the result, call asynchronously,
   or choose a lighter alternative before committing to the design
@@ -330,6 +356,7 @@ If no functions were processed (MCP unavailable or no callees to measure), do NO
 - **N** = unique callee functions whose assembly was sent to LOCI
 - **M** = MCP calls to `mcp__loci-plugin__get_assembly_block_exec_behavior` (exec-behaviors)
 - **R** = reasoning cycles: 1 for the initial LOCI result pass, +1 for each
-  escalated skill (stack-depth, memory-report) whose results were reasoned over
+  re-query loop iteration, +2 for each escalated skill (stack-depth,
+  memory-report) — 1 at trigger, 1 when reasoning over results
 - **escalated** = space-separated list of skills called (e.g. `stack-depth · memory-report`);
   omit the line entirely if no escalation occurred
