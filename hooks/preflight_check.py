@@ -156,6 +156,13 @@ def main():
     tool_name  = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
 
+    # Skip non-source-code files (plan files, markdown, configs)
+    file_path = tool_input.get("file_path", "")
+    if file_path:
+        skip_patterns = (".claude/plans/", ".md", ".json", ".yml", ".yaml", ".toml")
+        if any(p in file_path.replace("\\", "/") for p in skip_patterns):
+            sys.exit(0)
+
     code = extract_code(tool_name, tool_input)
     if not code:
         sys.exit(0)

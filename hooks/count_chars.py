@@ -21,6 +21,11 @@ def main():
     if not file_path:
         sys.exit(0)
 
+    # Skip non-source-code files (plan files, markdown, configs)
+    skip_patterns = (".claude/plans/", ".claude/memory/")
+    if any(p in file_path.replace("\\", "/") for p in skip_patterns):
+        sys.exit(0)
+
     if not os.path.isfile(file_path):
         sys.exit(0)
 
