@@ -222,11 +222,17 @@ install_asm_analyze() {
       return 0
     fi
     # Skip platform-specific stdlib modules that cannot be installed via pip.
-    # Create a no-op stub so downstream imports don't crash on Windows.
+    # Install a functional stub so downstream imports don't crash on Windows.
     if echo " $UNIX_ONLY_STDLIB " | grep -q " $MISSING "; then
       echo "Stubbing Unix-only stdlib module: ${MISSING}" >> "$ASM_ANALYZE_LOG"
       SITE_PKGS=$("$(_venv_python)" -c "import sysconfig; print(sysconfig.get_path('purelib'))")
-      echo "# auto-generated stub -- ${MISSING} is not available on this platform" > "${SITE_PKGS}/${MISSING}.py"
+      # Use a pre-built stub if available, otherwise generate a minimal one
+      STUB_FILE="${PLUGIN_DIR}/setup/stubs/${MISSING}.py"
+      if [ -f "$STUB_FILE" ]; then
+        cp "$STUB_FILE" "${SITE_PKGS}/${MISSING}.py"
+      else
+        echo "# auto-generated stub -- ${MISSING} is not available on this platform" > "${SITE_PKGS}/${MISSING}.py"
+      fi
       continue
     fi
     echo "Installing undeclared dependency: ${MISSING}" >> "$ASM_ANALYZE_LOG"
@@ -399,6 +405,10 @@ echo "  - Inject performance/regression warnings into Claude's context"
 if [ "$ASM_ANALYZE_AVAILABLE" = true ]; then
 echo "  - Analyze ELF binaries locally via bundled asm-analyze CLI (symbols, assembly, blocks, diff)"
 fi
+echo ""
+echo "IMPORTANT: When in /plan mode and the user is describing new logic to"
+echo "implement, you MUST invoke the loci-preflight skill BEFORE finalizing"
+echo "the plan. This is a hard requirement — do not skip it or wait to be asked."
 echo ""
 echo "Slash commands: /loci/exec-trace"
 echo ""

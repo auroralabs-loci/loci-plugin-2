@@ -1,16 +1,14 @@
 ---
 name: loci-preflight
 description: >
-  Pre-execution analysis: before writing or editing any function, reason
-  through control-flow and timing/energy analysis on existing callees using compiled
-  artifacts to assess execution fit before touching the code. Run this during
-  planning — not at write time. Invoke ONLY when BOTH conditions are true: (1)
-  the session is in plan mode (/plan or thinking mode), AND (2) the user is
-  describing new logic to write ("write a function that...", "implement...",
-  "add a method for...", "how should I..."). Do NOT invoke for direct edit
-  requests outside of plan mode. Do not wait until you are at the keyboard —
-  the point is to catch ordering and timing/energy problems while the design is
-  still cheap to change.
+  MANDATORY during planning: before writing or editing any function, run
+  execution-aware analysis (control-flow, timing/energy) on existing callees
+  using compiled artifacts. This skill MUST be invoked during /plan mode when
+  the user describes new logic to implement — do NOT skip it, do NOT wait to be
+  asked. Trigger words: "implement", "add", "write a function", "new feature",
+  "how should I". Do NOT invoke for direct edit requests outside of plan mode.
+  The point is to catch timing and energy problems while the design is still
+  cheap to change.
 ---
 
 # loci-preflight
