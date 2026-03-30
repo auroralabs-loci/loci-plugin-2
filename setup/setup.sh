@@ -221,10 +221,13 @@ install_asm_analyze() {
     if [ -z "$MISSING" ]; then
       return 0
     fi
-    # Skip platform-specific stdlib modules that cannot be installed via pip
+    # Skip platform-specific stdlib modules that cannot be installed via pip.
+    # Create a no-op stub so downstream imports don't crash on Windows.
     if echo " $UNIX_ONLY_STDLIB " | grep -q " $MISSING "; then
-      echo "Skipping Unix-only stdlib module: ${MISSING}" >> "$ASM_ANALYZE_LOG"
-      break
+      echo "Stubbing Unix-only stdlib module: ${MISSING}" >> "$ASM_ANALYZE_LOG"
+      SITE_PKGS=$("$(_venv_python)" -c "import sysconfig; print(sysconfig.get_path('purelib'))")
+      echo "# auto-generated stub -- ${MISSING} is not available on this platform" > "${SITE_PKGS}/${MISSING}.py"
+      continue
     fi
     echo "Installing undeclared dependency: ${MISSING}" >> "$ASM_ANALYZE_LOG"
     VIRTUAL_ENV="$VENV_DIR" uv pip install "$MISSING" >> "$ASM_ANALYZE_LOG" 2>&1 || return 1
