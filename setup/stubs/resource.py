@@ -2,8 +2,6 @@
 # Provides no-op implementations so packages that conditionally use
 # resource (e.g. fsspec, angr) don't crash on Windows.
 
-import sys
-
 # Common error type
 error = OSError
 
