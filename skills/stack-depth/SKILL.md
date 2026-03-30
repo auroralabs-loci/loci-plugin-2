@@ -1,6 +1,5 @@
 ---
 description: Analyze worst-case stack depth from compiled assembly using call-graph traversal
-disable-model-invocation: true
 ---
 
 # LOCI Stack Depth Analysis
