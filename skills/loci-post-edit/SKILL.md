@@ -54,21 +54,24 @@ If the architecture is **not** in this table, emit and stop:
 Supported: aarch64 , armv7e-m , armv6-m , tc399
 ```
 
-If no compiler was detected, inform the user and stop.
-
-Do **not** re-run detection scripts — use the values already in the session context.
+If no session context is detected, do not stop — detect the architecture
+from existing ELF artifacts or the project build system, same as preflight.
 
 ## Step 1: Identify pre-edit and post-edit artifacts
 
-Use the **session context** from step 0 (detected binaries, build system,
-compiler) to locate the compiled artifact (`.o` or linked binary) for the
-edited source file. Check the build output directory from the project's
-build system, not just the source directory.
+Locate the compiled artifact (`.o` or linked binary) for the edited source.
+Check build output directories from the project's build system, not just the
+source directory.
 
-The preflight hook automatically saves a pre-edit snapshot as
-`<name>.o.prev` next to the `.o`. If no `.o.prev` exists, proceed with
-absolute timing only (no % diff). If no artifacts exist at all, note
-"(no binary)" and stop.
+If no post-edit `.o` exists, compile the edited source with `-c` using the
+compiler and flags from step 0 (same as preflight Step 1):
+```
+<compiler> <flags> -c <source> -o <basename>.o
+```
+
+For the pre-edit artifact: the preflight hook saves `<name>.o.prev`
+automatically. If preflight did not run (no `.o.prev`), proceed with
+absolute timing only — no % diff.
 
 ## Step 2: diff-elfs — find modified/added functions
 
