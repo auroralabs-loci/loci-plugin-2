@@ -1,13 +1,12 @@
 ---
 name: loci-post-edit
 description: >
-  MANDATORY after edits: after any Edit/Write/MultiEdit to C/C++/Rust source
-  files (.c, .cc, .cpp, .cxx, .h, .hpp, .hxx, .rs), invoke this skill
-  IMMEDIATELY — do NOT skip it, do NOT wait to be asked, do NOT batch.
   Compare pre-edit and post-edit compiled artifacts to report execution
   timing % diff, energy consumption, and control-flow analysis.
-  Also invoke when the user says "analyze the change", "measure the edit",
-  "post-edit", "compare before/after", or "timing diff".
+when_to_use: >
+  MANDATORY after any Edit/Write/MultiEdit to C/C++/Rust source
+  (.c,.cc,.cpp,.cxx,.h,.hpp,.hxx,.rs). Invoke IMMEDIATELY — do not skip,
+  batch, or wait. Also: "analyze the change", "measure the edit", "timing diff".
 ---
 
 # loci-post-edit
@@ -232,6 +231,23 @@ on the LOCI timing, energy, and CFG data above. Address each of these:
 5. **Verdict** — One line: does the implementation look correct from an
    execution perspective? Use: OK, CAUTION (with reason), or FLAG (with
    specific concern).
+
+### Action on CAUTION or FLAG
+
+When the verdict is **CAUTION** or **FLAG**, do not just report — act on it:
+
+1. **Propose a fix** — based on the LOCI timing, energy, and CFG data, describe
+   a specific code change that would resolve the concern (e.g., cache a result,
+   use a lighter callee, move work off the hot path, flatten the call chain).
+2. **Ask the user** — present the concern and proposed fix, and ask whether to
+   apply the rewrite. Do not silently proceed or ignore the finding.
+
+Example:
+```
+Verdict: FLAG — worst path regressed +42% due to new snprintf call on hot path.
+Proposed fix: replace snprintf with a bounded itoa + memcpy (saves ~180 ns worst case).
+Apply this rewrite? [user decides]
+```
 
 ## LOCI footer
 

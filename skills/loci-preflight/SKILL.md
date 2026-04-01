@@ -1,14 +1,13 @@
 ---
 name: loci-preflight
 description: >
-  MANDATORY during planning: before writing or editing any function, run
-  execution-aware analysis (control-flow, timing/energy) on existing callees
-  using compiled artifacts. This skill MUST be invoked during /plan mode when
-  the user describes new logic to implement — do NOT skip it, do NOT wait to be
-  asked. Trigger words: "implement", "add", "write a function", "new feature",
-  "how should I". Do NOT invoke for direct edit requests outside of plan mode.
-  The point is to catch timing and energy problems while the design is still
+  Execution-aware preflight analysis (control-flow, timing/energy) on existing
+  callees using compiled artifacts, to catch problems while the design is still
   cheap to change.
+when_to_use: >
+  MANDATORY in /plan mode when user describes new logic. Triggers: "implement",
+  "add", "write a function", "new feature", "how should I". Do NOT invoke for
+  review/explain requests or direct edits outside plan mode.
 ---
 
 # loci-preflight
@@ -259,12 +258,18 @@ counter) by 1 now.
 *Escalate to `stack-depth`* when — increment R by 1 at trigger:
 - Execution context is ISR, HWI, or interrupt callback, AND call chain
   depth > 3 levels visible in CFG, OR
-- Recursion already flagged in CFG analysis above.
+- Recursion already flagged in CFG analysis above, OR
+- Plan adds a new RTOS task (xTaskCreate, Task_construct, osThreadNew) that
+  needs stack sizing, OR
+- Plan introduces large local variables on stack (buffers, arrays, C++ objects
+  with non-trivial constructors), OR
+- Plan adds a known-deep callee (printf, snprintf, crypto, TLS functions).
 
 After stack-depth returns, reason over its results — increment R by 1:
-- Does worst-case stack depth fit the HWI/ISR stack budget?
+- Does worst-case stack depth fit the task's or ISR's configured stack budget?
+- Are there large frames that could move to static or heap allocation?
 - Does any frame in the chain add cost the plan can eliminate?
-- Does the plan need to restructure to reduce depth?
+- Could the call chain be flattened to reduce depth?
 → adjust plan based on conclusion before proceeding.
 
 *Escalate to `memory-report`* when — increment R by 1 at trigger:

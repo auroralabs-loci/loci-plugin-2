@@ -1,5 +1,12 @@
 ---
-description: Analyze worst-case stack depth from compiled assembly using call-graph traversal
+description: >
+  Worst-case stack depth analysis for embedded C/C++/Rust: call-graph traversal,
+  per-function frame sizes, recursion detection, and stack budget pass/fail from
+  compiled .o or linked ELF binaries.
+when_to_use: >
+  When user asks about stack sizing, stack overflow, task stack budgets, frame
+  size impact of a change, or RAM optimization in embedded/RTOS projects. Also
+  when investigating hard faults or sizing new RTOS tasks.
 ---
 
 # LOCI Stack Depth Analysis

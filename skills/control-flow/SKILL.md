@@ -1,5 +1,6 @@
 ---
 description: Create annotated CFG (Control Flow Graphs) in text format optimised for LLM analysis on compiled assembly code to provide execution insights
+when_to_use: When user asks about call dependencies, function impact, or control flow analysis from compiled code.
 disable-model-invocation: true
 ---
 
