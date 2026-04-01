@@ -232,9 +232,21 @@ This gives fast feedback on whether a change grew ROM/RAM without needing a full
 After emitting the memory report (single or delta), append this footer once as the
 very last thing printed — **only if N > 0**. If no functions were processed, do NOT emit the footer.
 
+**Record cumulative stats** (run via Bash before rendering the footer):
+```
+<venv-python> <plugin-dir>/lib/loci_stats.py record --skill memory-report --functions <N> --mcp-calls 0 --co-reasoning 0
+```
+
+**Read cumulative summary** (run via Bash; capture output):
+```
+<venv-python> <plugin-dir>/lib/loci_stats.py summary
+```
+
+Render the footer — include the summary line only if the command produced output:
 ```
 ─── LOCI · memory-report ──────────────
   <N> symbols (functions + variables) analyzed
+    <cumulative-summary-output>        ← omit if empty
 ────────────────────────────────────────
 ```
 

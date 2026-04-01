@@ -167,9 +167,21 @@ Delta:  +48 bytes (+100%)
 After emitting all per-function stack depth reports, append this footer once as the
 very last thing printed — **only if N > 0**. If no functions were processed, do NOT emit the footer.
 
+**Record cumulative stats** (run via Bash before rendering the footer):
+```
+<venv-python> <plugin-dir>/lib/loci_stats.py record --skill stack-depth --functions <N> --mcp-calls 0 --co-reasoning 0
+```
+
+**Read cumulative summary** (run via Bash; capture output):
+```
+<venv-python> <plugin-dir>/lib/loci_stats.py summary
+```
+
+Render the footer — include the summary line only if the command produced output:
 ```
 ─── LOCI · stack-depth ─────────────────
   <N> functions analyzed
+    <cumulative-summary-output>        ← omit if empty
 ────────────────────────────────────────
 ```
 

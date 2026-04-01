@@ -86,9 +86,21 @@ If no `.o` exists yet, fall through to full compilation.
 After reporting timing results, append this footer as the last thing printed —
 **only if N > 0**. If no functions were processed, do NOT emit the footer.
 
+**Record cumulative stats** (run via Bash before rendering the footer):
+```
+<venv-python> <plugin-dir>/lib/loci_stats.py record --skill exec-trace --functions <N> --mcp-calls <M> --co-reasoning 0
+```
+
+**Read cumulative summary** (run via Bash; capture output):
+```
+<venv-python> <plugin-dir>/lib/loci_stats.py summary
+```
+
+Render the footer — include the summary line only if the command produced output:
 ```
 ─── LOCI · exec-trace ──────────────────
   <N> functions · <M> MCP calls for execution behavior
+    <cumulative-summary-output>        ← omit if empty
 ────────────────────────────────────────
 ```
 

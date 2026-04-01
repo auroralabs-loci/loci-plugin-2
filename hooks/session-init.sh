@@ -57,6 +57,14 @@ _hash_cwd() {
     printf '%s' "$(pwd)" | cksum | awk '{print $1}'
 }
 
+_git_branch() {
+    git -C "$(pwd)" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown"
+}
+
+_branch_slug() {
+    printf '%s' "$1" | tr '/' '_' | tr -cd 'A-Za-z0-9_-' | cut -c1-64
+}
+
 _plugin_version() {
     local jq_bin="$1"
     "$jq_bin" -r '.plugins[0].version // "0"' \
@@ -230,8 +238,13 @@ _first_time_setup() {
 
     echo "$ver" > "$SETUP_MARKER"
     printf 'LOCI: setup complete\n'
+    rmdir "$lock" 2>/dev/null; trap - EXIT
+}
 
-    # First-run welcome — only prints once after initial install
+_welcome() {
+    local marker="${PLUGIN_DIR}/.welcome-shown"
+    [ -f "$marker" ] && return 0
+
     printf '\nWelcome to LOCI!\n\n'
     printf 'Try these:\n'
     printf '  "What'\''s the execution cost of main()?"        → timing & energy\n'
@@ -240,7 +253,7 @@ _first_time_setup() {
     printf '\nLOCI auto-runs during /plan (preflight) and after edits (post-edit).\n'
     printf '\nNote: Authorize the LOCI MCP server when prompted to enable timing/energy analysis.\n'
 
-    rmdir "$lock" 2>/dev/null; trap - EXIT
+    touch "$marker" 2>/dev/null
 }
 
 # ── 5. Per-session project detection ──────────────────────────────────────────
@@ -258,9 +271,12 @@ _detect_and_write_context() {
     LOCI_TARGET=$("$JQ" -r '.loci_target // "unknown"' <<< "$PROJECT_INFO" 2>/dev/null || echo unknown)
 
     local HASH; HASH=$(_hash_cwd)
+    local GIT_BRANCH; GIT_BRANCH=$(_git_branch)
+    local BRANCH_SLUG; BRANCH_SLUG=$(_branch_slug "$GIT_BRANCH")
     local KEYED="${STATE_DIR}/project-context-${HASH}.json"
 
-    "$JQ" --arg pwd "$(pwd)" '. + {project_root: $pwd}' <<< "$PROJECT_INFO" \
+    "$JQ" --arg pwd "$(pwd)" --arg branch "$GIT_BRANCH" --arg slug "$BRANCH_SLUG" --arg hash "$HASH" \
+        '. + {project_root: $pwd, git_branch: $branch, branch_slug: $slug, cwd_hash: $hash}' <<< "$PROJECT_INFO" \
         > "$KEYED" 2>/dev/null || return 1
 
     (cd "$STATE_DIR" && ln -sf "$(basename "$KEYED")" project-context.json 2>/dev/null) \
@@ -268,8 +284,8 @@ _detect_and_write_context() {
 
     # Context reminder — Claude Code injects SessionStart stdout into the
     # session, making this available to skills without re-running detection.
-    printf '\nTarget: %s, Compiler: %s, Build: %s\nLOCI target: %s\n' \
-        "$LOCI_TARGET" "$COMPILER" "$BUILD_SYS" "$LOCI_TARGET"
+    printf '\nTarget: %s, Compiler: %s, Build: %s\nLOCI target: %s\nBranch: %s\n' \
+        "$LOCI_TARGET" "$COMPILER" "$BUILD_SYS" "$LOCI_TARGET" "$GIT_BRANCH"
     printf 'Available: /exec-trace, /stack-depth, /memory-report, /control-flow\n'
     printf 'Auto-runs: loci-preflight (in /plan), loci-post-edit (after edits)\n'
 }
@@ -277,4 +293,5 @@ _detect_and_write_context() {
 # ── main ──────────────────────────────────────────────────────────────────────
 _first_time_setup
 _detect_and_write_context
+_welcome
 exit 0

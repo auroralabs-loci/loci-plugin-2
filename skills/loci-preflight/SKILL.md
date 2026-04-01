@@ -377,16 +377,28 @@ After emitting the preflight report (or all-clear shorthand), append this footer
 as the last thing printed — **only if N > 0** (at least one function was sent to LOCI).
 If no functions were processed (MCP unavailable or no callees to measure), do NOT emit the footer.
 
+**Record cumulative stats** (run via Bash before rendering the footer):
+```
+<venv-python> <plugin-dir>/lib/loci_stats.py record --skill preflight --functions <N> --mcp-calls <M> --co-reasoning <R>
+```
+
+**Read cumulative summary** (run via Bash; capture output):
+```
+<venv-python> <plugin-dir>/lib/loci_stats.py summary
+```
+
+Render the footer — include the summary line only if the command produced output:
 ```
 ─── LOCI · preflight ───────────────────
-  <N> functions · <M> MCP calls · <R> reasoning cycles
-  escalated: <skills>                  ← omit line if no escalation
+  <N> functions · <M> MCP calls · <R> co-reasoning
+    escalated: <skills>                ← omit if no escalation
+    <cumulative-summary-output>        ← omit if empty
 ────────────────────────────────────────
 ```
 
 - **N** = unique callee functions whose assembly was sent to LOCI
 - **M** = MCP calls to `mcp__loci__get_assembly_block_exec_behavior` (exec-behaviors)
-- **R** = reasoning cycles: 1 for the initial LOCI result pass, +1 for each
+- **R** = co-reasoning: 1 for the initial LOCI result pass, +1 for each
   re-query loop iteration, +2 for each escalated skill (stack-depth,
   memory-report) — 1 at trigger, 1 when reasoning over results
 - **escalated** = space-separated list of skills called (e.g. `stack-depth · memory-report`);

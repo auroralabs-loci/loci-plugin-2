@@ -254,14 +254,26 @@ Apply this rewrite? [user decides]
 After emitting all per-function reports, append this footer once as the very
 last thing printed — **only if N > 0**. If no functions were processed, do NOT emit the footer.
 
+**Record cumulative stats** (run via Bash before rendering the footer):
+```
+<venv-python> <plugin-dir>/lib/loci_stats.py record --skill post-edit --functions <N> --mcp-calls <M> --co-reasoning <R>
+```
+
+**Read cumulative summary** (run via Bash; capture output):
+```
+<venv-python> <plugin-dir>/lib/loci_stats.py summary
+```
+
+Render the footer — include the summary line only if the command produced output:
 ```
 ─── LOCI · post-edit ───────────────────
-  <N> functions · <M> MCP calls · <R> reasoning cycles
+  <N> functions · <M> MCP calls · <R> co-reasoning
   Verdict: <OK | CAUTION | FLAG> — <one-line summary>
+    <cumulative-summary-output>        ← omit if empty
 ────────────────────────────────────────
 ```
 
 - **N** = unique functions (modified + added) whose assembly was sent to LOCI
 - **M** = MCP calls to `mcp__loci__get_assembly_block_exec_behavior` (exec-behaviors)
   (typically 2 for modified functions: pre + post; 1 for added functions)
-- **R** = reasoning cycles (one per function that has a Reasoning section)
+- **R** = co-reasoning (one per function that has a Reasoning section)
