@@ -111,6 +111,14 @@ _detect_cxxfilt() {
 }
 CXXFILT_DIR="$(_detect_cxxfilt 2>/dev/null || true)"
 
+# Write c++filt path to state so asm_analyze.py can prepend the right directory
+mkdir -p "${PLUGIN_DIR}/state"
+if [ -n "$CXXFILT_DIR" ]; then
+  printf '{"cxxfilt_dir":"%s"}\n' "$CXXFILT_DIR" > "${PLUGIN_DIR}/state/loci-paths.json"
+else
+  printf '{"cxxfilt_dir":null}\n' > "${PLUGIN_DIR}/state/loci-paths.json"
+fi
+
 if ! command -v uv >/dev/null 2>&1; then
   echo -e "${YELLOW}uv not found — installing...${NC}"
   if [[ "$(uname -s)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
@@ -173,7 +181,7 @@ fi
 
 # 3. Permissions
 echo -n "Setting permissions... "
-# chmod +x "${PLUGIN_DIR}/hooks/"*.sh
+chmod +x "${PLUGIN_DIR}/hooks/"*.sh 2>/dev/null || true
 chmod +x "${PLUGIN_DIR}/lib/"*.sh
 chmod +x "${PLUGIN_DIR}/lib/"*.py
 echo -e "${GREEN}OK${NC}"
@@ -246,7 +254,14 @@ install_asm_analyze() {
 echo -n "Setting up asm-analyze environment... "
 if ls "${WHEEL_DIR}"/*.whl 1>/dev/null 2>&1; then
   # Fast-path: skip install if venv already works for current wheel
-  WHEEL_HASH=$(md5 -q "${WHEEL_DIR}"/*.whl 2>/dev/null || md5sum "${WHEEL_DIR}"/*.whl 2>/dev/null | awk '{print $1}')
+  # Cross-platform wheel hash: md5sum on Linux/WSL, md5 on macOS
+  if command -v md5sum >/dev/null 2>&1; then
+    WHEEL_HASH=$(md5sum "${WHEEL_DIR}"/*.whl | awk '{print $1}' | sort | tr -d '\n')
+  elif command -v md5 >/dev/null 2>&1; then
+    WHEEL_HASH=$(md5 -q "${WHEEL_DIR}"/*.whl 2>/dev/null | tr -d '\n')
+  else
+    WHEEL_HASH=""
+  fi
   MARKER_FILE="${VENV_DIR}/.loci-wheel-hash"
   if [ -f "$MARKER_FILE" ] && [ "$(cat "$MARKER_FILE" 2>/dev/null)" = "$WHEEL_HASH" ] \
       && "$(_venv_python)" -c "from loci.service.asmslicer import asmslicer" 2>/dev/null; then
@@ -295,10 +310,16 @@ echo "  Assembly:   $NUM_ASM files"
 # Persist detection results per project so skills consume them without re-detecting
 STATE_DIR="${PLUGIN_DIR}/state"
 mkdir -p "$STATE_DIR"
-PROJECT_HASH=$(echo -n "$(pwd)" | shasum -a 256 | cut -c1-12)
+# Cross-platform hash: sha256sum on Linux/WSL, shasum on macOS
+if command -v sha256sum >/dev/null 2>&1; then
+  PROJECT_HASH=$(printf '%s' "$(pwd)" | sha256sum | cut -c1-12)
+else
+  PROJECT_HASH=$(printf '%s' "$(pwd)" | shasum -a 256 | cut -c1-12)
+fi
 echo "$PROJECT_INFO" | jq --arg pwd "$(pwd)" \
   '. + {project_root: $pwd}' > "${STATE_DIR}/project-context-${PROJECT_HASH}.json"
-ln -sf "project-context-${PROJECT_HASH}.json" "${STATE_DIR}/project-context.json" 2>/dev/null \
+(cd "$STATE_DIR" \
+  && ln -sf "project-context-${PROJECT_HASH}.json" project-context.json 2>/dev/null) \
   || cp "${STATE_DIR}/project-context-${PROJECT_HASH}.json" "${STATE_DIR}/project-context.json"
 
 # 6. Validate hooks.json

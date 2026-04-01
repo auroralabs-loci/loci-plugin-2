@@ -6,7 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/setup/setup.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-init.sh",
+            "timeout": 120
           }
         ]
       }
@@ -17,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "VENV_PY=$([ -x \"$CLAUDE_PLUGIN_ROOT/.venv/Scripts/python\" ] && echo \"$CLAUDE_PLUGIN_ROOT/.venv/Scripts/python\" || echo \"$CLAUDE_PLUGIN_ROOT/.venv/bin/python\"); \"$VENV_PY\" \"$CLAUDE_PLUGIN_ROOT/hooks/preflight_check.py\"",
+            "command": "VENV_PY=$([ -x \"$CLAUDE_PLUGIN_ROOT/.venv/Scripts/python\" ] && echo \"$CLAUDE_PLUGIN_ROOT/.venv/Scripts/python\" || echo \"$CLAUDE_PLUGIN_ROOT/.venv/bin/python\"); [ -x \"$VENV_PY\" ] && \"$VENV_PY\" \"$CLAUDE_PLUGIN_ROOT/hooks/preflight_check.py\" || true",
             "timeout": 8,
             "statusMessage": "LOCI preflight..."
           }
