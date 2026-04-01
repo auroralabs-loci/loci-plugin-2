@@ -2,19 +2,21 @@
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "loci-plugin",
   "owner": {
-    "name": "ronen",
-    "email": ""
+    "name": "AuroraLabs Ltd",
+    "email": "loci@auroralabs.com"
   },
   "metadata": {
-    "description": "Context Aware for your coding agent."
+    "description": "Execution-aware analysis for embedded C/C++/Rust — hardware-grounded timing, energy, stack depth, and memory from compiled artifacts."
   },
   "plugins": [
     {
       "name": "loci-plugin",
       "version": "0.1.10",
-      "description": "Context Aware for your coding agent.",
+      "description": "Execution-aware analysis for embedded C/C++/Rust — hardware-grounded timing, energy, stack depth, and memory from compiled artifacts.",
       "source": "./",
       "strict": false,
+      "category": "development",
+      "tags": ["embedded", "firmware", "C", "C++", "Rust", "timing", "energy", "stack-depth", "ARM", "TriCore"],
       "mcpServers": {
         "loci": {
           "type": "http",
