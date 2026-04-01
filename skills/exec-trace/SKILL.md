@@ -1,5 +1,6 @@
 ---
 description: Analyze function execution timing and energy from compiled assembly
+when_to_use: When user asks for timing/energy of a specific function from compiled assembly.
 disable-model-invocation: true
 ---
 

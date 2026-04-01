@@ -240,7 +240,13 @@ def main():
         reports.append(render_report(func_name, findings))
 
     if reports:
-        print("\n".join(reports), flush=True)
+        output = {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "additionalContext": "\n".join(reports),
+            }
+        }
+        json.dump(output, sys.stdout)
 
     sys.exit(0)  # Always advisory — skill layer decides whether to proceed
 

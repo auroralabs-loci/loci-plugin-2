@@ -1,13 +1,12 @@
 ---
 name: loci-post-edit
 description: >
-  MANDATORY after edits: after any Edit/Write/MultiEdit to C/C++/Rust source
-  files (.c, .cc, .cpp, .cxx, .h, .hpp, .hxx, .rs), invoke this skill
-  IMMEDIATELY — do NOT skip it, do NOT wait to be asked, do NOT batch.
   Compare pre-edit and post-edit compiled artifacts to report execution
   timing % diff, energy consumption, and control-flow analysis.
-  Also invoke when the user says "analyze the change", "measure the edit",
-  "post-edit", "compare before/after", or "timing diff".
+when_to_use: >
+  MANDATORY after any Edit/Write/MultiEdit to C/C++/Rust source
+  (.c,.cc,.cpp,.cxx,.h,.hpp,.hxx,.rs). Invoke IMMEDIATELY — do not skip,
+  batch, or wait. Also: "analyze the change", "measure the edit", "timing diff".
 ---
 
 # loci-post-edit
