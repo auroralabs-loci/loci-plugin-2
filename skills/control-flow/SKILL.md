@@ -68,3 +68,28 @@ If no `.o` exists yet, fall through to full compilation.
    ```
    The output is in a text format optimized for LLM analysis. Use it in step 3.
 3. Report analysis for selected functions based on the generated CFG's
+
+## LOCI footer
+
+After emitting the control flow analysis, append this footer once as the very
+last thing printed — **only if N > 0**. If no functions were processed, do NOT emit the footer.
+
+**Record cumulative stats** (run via Bash before rendering the footer):
+```
+<venv-python> <plugin-dir>/lib/loci_stats.py record --skill control-flow --functions <N> --mcp-calls 0 --co-reasoning 0
+```
+
+**Read cumulative summary** (run via Bash; capture output):
+```
+<venv-python> <plugin-dir>/lib/loci_stats.py summary
+```
+
+Render the footer — include the summary line only if the command produced output:
+```
+─── LOCI · control-flow ────────────────
+  <N> functions analyzed
+    <cumulative-summary-output>        ← omit if empty
+────────────────────────────────────────
+```
+
+- **N** = unique functions whose CFG was extracted and analyzed
