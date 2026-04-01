@@ -238,8 +238,13 @@ _first_time_setup() {
 
     echo "$ver" > "$SETUP_MARKER"
     printf 'LOCI: setup complete\n'
+    rmdir "$lock" 2>/dev/null; trap - EXIT
+}
 
-    # First-run welcome — only prints once after initial install
+_welcome() {
+    local marker="${PLUGIN_DIR}/.welcome-shown"
+    [ -f "$marker" ] && return 0
+
     printf '\nWelcome to LOCI!\n\n'
     printf 'Try these:\n'
     printf '  "What'\''s the execution cost of main()?"        → timing & energy\n'
@@ -248,7 +253,7 @@ _first_time_setup() {
     printf '\nLOCI auto-runs during /plan (preflight) and after edits (post-edit).\n'
     printf '\nNote: Authorize the LOCI MCP server when prompted to enable timing/energy analysis.\n'
 
-    rmdir "$lock" 2>/dev/null; trap - EXIT
+    touch "$marker" 2>/dev/null
 }
 
 # ── 5. Per-session project detection ──────────────────────────────────────────
@@ -288,4 +293,5 @@ _detect_and_write_context() {
 # ── main ──────────────────────────────────────────────────────────────────────
 _first_time_setup
 _detect_and_write_context
+_welcome
 exit 0
