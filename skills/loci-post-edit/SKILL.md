@@ -232,6 +232,23 @@ on the LOCI timing, energy, and CFG data above. Address each of these:
    execution perspective? Use: OK, CAUTION (with reason), or FLAG (with
    specific concern).
 
+### Action on CAUTION or FLAG
+
+When the verdict is **CAUTION** or **FLAG**, do not just report — act on it:
+
+1. **Propose a fix** — based on the LOCI timing, energy, and CFG data, describe
+   a specific code change that would resolve the concern (e.g., cache a result,
+   use a lighter callee, move work off the hot path, flatten the call chain).
+2. **Ask the user** — present the concern and proposed fix, and ask whether to
+   apply the rewrite. Do not silently proceed or ignore the finding.
+
+Example:
+```
+Verdict: FLAG — worst path regressed +42% due to new snprintf call on hot path.
+Proposed fix: replace snprintf with a bounded itoa + memcpy (saves ~180 ns worst case).
+Apply this rewrite? [user decides]
+```
+
 ## LOCI footer
 
 After emitting all per-function reports, append this footer once as the very
