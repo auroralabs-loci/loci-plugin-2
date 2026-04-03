@@ -1,142 +1,119 @@
 {
   "skill_name": "loci-post-edit",
+  "description": "Auto-trigger evals: verify that loci-post-edit fires automatically after Claude makes Edit/Write changes to C/C++/Rust source files, without the user explicitly asking for post-edit analysis.",
+  "note": "Set $LOCI_TEST_BLE_ROOT to your local BLE project root before running. These evals require compiled artifacts (.o / .out) to be present for full analysis; if artifacts are missing the skill must still trigger and note '(no binary)'.",
   "evals": [
     {
-      "id": "pe-7",
+      "id": "pe-auto-1",
       "should_trigger": true,
-      "category": "invoke-post-edit-connection-getconnhandle",
+      "category": "auto-invoke-after-c-file-edit",
       "grading_mode": "bash",
-      "prompt": "I added index-range validation to Connection_getConnhandle in $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R53/ble5stack/basic_ble_profiles/app/app_connection.c so it returns 0xFFFF when the index is out of bounds. Pre-edit object: $LOCI_TEST_BLE_ROOT/.loci-build/cortexm/app_connection_before.o, post-edit object: $LOCI_TEST_BLE_ROOT/.loci-build/cortexm/app_connection_after.o. The binary is at $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out. Session context: Target: armv7e-m, Compiler: arm-none-eabi-gcc, LOCI target: armv7e-m. Analyze the change.",
-      "expected_output": "Runs diff-elfs on app_connection_before.o vs app_connection_after.o to identify Connection_getConnhandle as modified. Extracts assembly from both pre and post artifacts, calls LOCI MCP for timing on both, then emits a Post-Edit report with Before/After/Diff columns for happy path, worst path, and energy. Includes a Control Flow section from the post-edit CFG.",
+      "prompt": "Add a null-pointer guard at the top of GATTServApp_ReadAttr in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/host/gattservapp_util.c that returns ATT_ERR_ATTR_NOT_FOUND immediately if the pAttr pointer is NULL. The binary is at $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out. Session context: Target: armv7e-m, Compiler: arm-none-eabi-gcc, LOCI target: armv7e-m.",
+      "expected_output": "Edits gattservapp_util.c to add the null guard, then automatically invokes loci-post-edit without being asked. A Post-Edit report for GATTServApp_ReadAttr appears after the edit.",
       "files": [],
       "assertions": [
         {
           "text": "Response includes a '## Post-Edit:' section header",
-          "description": "'Analyze the change' with real pre/post .o artifacts must trigger the loci-post-edit skill"
+          "description": "After editing a .c file, loci-post-edit must be auto-invoked — user did not ask for it explicitly"
         },
         {
-          "text": "Post-Edit block contains 'Happy path:' line",
-          "description": "Execution timing report must include the happy path metric"
-        },
-        {
-          "text": "Post-Edit block contains 'Worst path:' line",
-          "description": "Execution timing report must include the worst path metric"
-        },
-        {
-          "text": "Post-Edit block contains 'Diff' column or a % diff value",
-          "description": "When a pre-edit artifact is present, % diff must be computed and shown for all metrics"
-        },
-        {
-          "text": "Response includes a '### Control Flow' section",
-          "description": "CFG analysis must appear for the modified function as required by SKILL.md Step 5"
+          "text": "Response contains an Edit or code change to gattservapp_util.c",
+          "description": "The code change must actually be made before the post-edit report is emitted"
         }
       ]
     },
     {
-      "id": "pe-8",
+      "id": "pe-auto-2",
       "should_trigger": true,
-      "category": "invoke-post-edit-clockp-walkqueuedynamic",
+      "category": "auto-invoke-after-c-function-modification",
       "grading_mode": "bash",
-      "prompt": "I optimised the tick-distance calculation in ClockP_walkQueueDynamic in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/kernel/freertos/dpl/ClockPLPF3_freertos.c to avoid redundant subtraction on the hot path. Pre-edit object: $LOCI_TEST_BLE_ROOT/.loci-build/cortexm/clock_before.o, post-edit object: $LOCI_TEST_BLE_ROOT/.loci-build/cortexm/clock_after.o. The binary is at $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out. Session context: Target: armv7e-m, Compiler: arm-none-eabi-gcc, LOCI target: armv7e-m. Measure the edit.",
-      "expected_output": "Runs diff-elfs on clock_before.o vs clock_after.o to identify ClockP_walkQueueDynamic as modified. Extracts assembly from both artifacts, calls LOCI MCP for timing on pre and post, and emits a Post-Edit report with Before/After/Diff for happy path, worst path, and energy. Includes a Control Flow section.",
+      "prompt": "In Connection_getConnhandle in $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R53/ble5stack/basic_ble_profiles/app/app_connection.c, change the out-of-bounds return value from 0 to 0xFFFF so callers can distinguish a valid handle from an error. The binary is at $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out. Session context: Target: armv7e-m, Compiler: arm-none-eabi-gcc, LOCI target: armv7e-m.",
+      "expected_output": "Edits app_connection.c to change the sentinel return value, then automatically invokes loci-post-edit. A Post-Edit report for Connection_getConnhandle appears after the edit.",
       "files": [],
       "assertions": [
         {
           "text": "Response includes a '## Post-Edit:' section header",
-          "description": "'Measure the edit' with real clock .o artifacts must trigger the loci-post-edit skill"
+          "description": "After editing a .c file, loci-post-edit must fire automatically"
         },
         {
-          "text": "Post-Edit block contains 'Happy path:' line",
-          "description": "Execution timing report must include the happy path metric"
-        },
-        {
-          "text": "Post-Edit block contains 'Diff' column or a % diff value",
-          "description": "When a pre-edit artifact is present, % diff must be shown"
-        },
-        {
-          "text": "Response includes a '### Control Flow' section",
-          "description": "CFG analysis must appear for the modified function"
+          "text": "Response contains an Edit or code change to app_connection.c",
+          "description": "The code change must be made before the post-edit report appears"
         }
       ]
     },
     {
-      "id": "pe-9",
+      "id": "pe-auto-3",
       "should_trigger": true,
-      "category": "invoke-post-edit-gattservapp-readattr",
+      "category": "auto-invoke-after-header-file-edit",
       "grading_mode": "bash",
-      "prompt": "I added a read-permission check at the top of GATTServApp_ReadAttr in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/host/gattservapp_util.c that returns ATT_ERR_READ_NOT_PERMITTED immediately when the attribute has no read permission. Pre-edit object: $LOCI_TEST_BLE_ROOT/.loci-build/cortexm/gatt_before.o, post-edit object: $LOCI_TEST_BLE_ROOT/.loci-build/cortexm/gatt_after.o. The binary is at $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out. Session context: Target: armv7e-m, Compiler: arm-none-eabi-gcc, LOCI target: armv7e-m. Compare before and after.",
-      "expected_output": "Runs diff-elfs on gatt_before.o vs gatt_after.o to identify GATTServApp_ReadAttr as modified. Extracts assembly from both, calls LOCI MCP for pre and post timing, emits a Post-Edit report with Before/After/Diff columns for happy path, worst path, and energy, and a Control Flow section.",
+      "prompt": "In $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R53/ble5stack/basic_ble_profiles/app/app_connection.h, add a #define CONN_INVALID_HANDLE 0xFFFF constant so the header exports the sentinel value used by Connection_getConnhandle. The binary is at $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out. Session context: Target: armv7e-m, Compiler: arm-none-eabi-gcc, LOCI target: armv7e-m.",
+      "expected_output": "Edits app_connection.h to add the define, then automatically invokes loci-post-edit. A Post-Edit report appears after the edit.",
       "files": [],
       "assertions": [
         {
           "text": "Response includes a '## Post-Edit:' section header",
-          "description": "'Compare before and after' with gatt .o artifacts must trigger the loci-post-edit skill"
+          "description": "After editing a .h header file, loci-post-edit must fire automatically"
         },
         {
-          "text": "Post-Edit block contains 'Happy path:' line",
-          "description": "Execution timing report must include the happy path metric"
-        },
-        {
-          "text": "Post-Edit block contains 'Diff' column or a % diff value",
-          "description": "When a pre-edit artifact is present, % diff must be computed and shown"
-        },
-        {
-          "text": "Response includes a '### Control Flow' section",
-          "description": "CFG analysis must appear for the modified function as required by SKILL.md Step 5"
+          "text": "Response contains an Edit or code change to app_connection.h",
+          "description": "The header change must be made before the post-edit report appears"
         }
       ]
     },
     {
-      "id": "pe-10",
+      "id": "pe-auto-4",
       "should_trigger": true,
-      "category": "invoke-post-edit-appmain-no-pre-edit",
+      "category": "auto-invoke-after-c-optimization",
       "grading_mode": "bash",
-      "prompt": "I just added BLE address-mode selection logic inside appMain in $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R53/ble5stack/basic_ble_profiles/app/app_main.c. I only have the new compiled object — there is no previous version. Post-edit object: $LOCI_TEST_BLE_ROOT/.loci-build/cortexm/app_main_after.o. The binary is at $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out. Session context: Target: armv7e-m, Compiler: arm-none-eabi-gcc, LOCI target: armv7e-m. Post-edit analysis please.",
-      "expected_output": "Detects that no pre-edit artifact is provided. Treats appMain, App_StackInitDoneHandler, and criticalErrorHandler as added functions. Extracts assembly from the post artifact only, calls LOCI MCP for absolute timing, and emits a Post-Edit report with absolute happy path, worst path, and energy values (no % diff). Notes '(no pre-edit artifact — showing absolute values only)' in the report.",
+      "prompt": "Optimise ClockP_walkQueueDynamic in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/kernel/freertos/dpl/ClockPLPF3_freertos.c by caching the current tick count in a local variable before the loop so it is not re-read on every iteration. The binary is at $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out. Session context: Target: armv7e-m, Compiler: arm-none-eabi-gcc, LOCI target: armv7e-m.",
+      "expected_output": "Edits ClockPLPF3_freertos.c to cache the tick count, then automatically invokes loci-post-edit. A Post-Edit report for ClockP_walkQueueDynamic appears after the edit.",
       "files": [],
       "assertions": [
         {
           "text": "Response includes a '## Post-Edit:' section header",
-          "description": "Post-edit analysis with no pre-edit artifact must still trigger the skill and emit a report"
+          "description": "After editing a .c file during an optimisation task, loci-post-edit must auto-fire"
         },
         {
-          "text": "Post-Edit block contains 'Happy path:' line",
-          "description": "Absolute timing report must include the happy path metric"
-        },
-        {
-          "text": "Response notes '(no pre-edit artifact' or 'absolute values only'",
-          "description": "When no pre-edit artifact exists, the report must note that only absolute values are shown and no % diff is computed"
-        },
-        {
-          "text": "Response does NOT contain a 'Diff' column or % diff value in the timing table",
-          "description": "Without a pre-edit artifact there is nothing to diff against — no percentage should appear"
+          "text": "Response contains an Edit or code change to ClockPLPF3_freertos.c",
+          "description": "The optimisation edit must be made before the post-edit report appears"
         }
       ]
     },
     {
-      "id": "pe-11",
+      "id": "pe-auto-6",
       "should_trigger": true,
-      "category": "invoke-post-edit-connection-conneventhandler",
+      "category": "auto-invoke-after-c-multi-change-optimization",
       "grading_mode": "bash",
-      "prompt": "I reworked Connection_ConnEventHandler in $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R53/ble5stack/basic_ble_profiles/app/app_connection.c to handle the new BLEAPPUTIL_CONN_UPDATE_AFTER_PARAM_UPDATE event type. Pre-edit object: $LOCI_TEST_BLE_ROOT/.loci-build/cortexm/app_connection_before.o, post-edit object: $LOCI_TEST_BLE_ROOT/.loci-build/cortexm/app_connection_after_new.o. The binary is at $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out. Session context: Target: armv7e-m, Compiler: arm-none-eabi-gcc, LOCI target: armv7e-m. Run post-edit analysis.",
-      "expected_output": "Runs diff-elfs on app_connection_before.o vs app_connection_after_new.o. Identifies Connection_ConnEventHandler (and any other changed functions) as modified or added. Extracts assembly from pre and post, calls LOCI MCP for timing on both, and emits a Post-Edit report with Before/After/Diff for happy path, worst path, and energy. Includes a Control Flow section derived from the post-edit CFG showing the updated switch/event dispatch path.",
+      "prompt": "In GAPBondMgr_FindAddr in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/host/gapbondmgr.c, the loop condition checks MAP_osal_memcmp(bonds[idx].addr, pDevAddr, B_ADDR_LEN) before (addrType == bonds[idx].addrType). Swap them so the cheap integer addrType comparison runs first and short-circuits the expensive 6-byte memcmp when types do not match. The binary is at $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out. Session context: Target: armv7e-m, Compiler: arm-none-eabi-gcc, LOCI target: armv7e-m.",
+      "expected_output": "Edits gapbondmgr.c to reorder the two conditions in GAPBondMgr_FindAddr, then automatically invokes loci-post-edit. The Post-Edit report for GAPBondMgr_FindAddr shows a non-zero timing or energy diff compared to the pre-edit baseline.",
       "files": [],
       "assertions": [
         {
           "text": "Response includes a '## Post-Edit:' section header",
-          "description": "'Run post-edit analysis' with real pre/post .o artifacts must trigger the loci-post-edit skill"
+          "description": "After editing a .c file, loci-post-edit must auto-fire"
         },
         {
-          "text": "Post-Edit block contains 'Happy path:' line",
-          "description": "Execution timing report must include the happy path metric"
+          "text": "Response contains an Edit or code change to gapbondmgr.c",
+          "description": "The condition-reorder edit must be applied before the post-edit report appears"
         },
         {
-          "text": "Post-Edit block contains 'Worst path:' line",
-          "description": "Execution timing report must include the worst path metric"
-        },
+          "text": "Post-Edit report includes a numeric timing or energy diff value that is not 0% or 0.0",
+          "description": "Swapping the memcmp and addrType checks is a real code-gen change and must produce a measurable non-zero diff"
+        }
+      ]
+    },
+    {
+      "id": "pe-auto-5",
+      "should_trigger": false,
+      "category": "no-auto-invoke-after-non-c-file-edit",
+      "grading_mode": "bash",
+      "prompt": "Update the run_evals.sh script in $LOCI_TEST_BLE_ROOT to add a --verbose flag that prints each eval ID before running it.",
+      "expected_output": "Edits run_evals.sh (a shell script) without triggering loci-post-edit. No Post-Edit report appears because the edited file is not a C/C++/Rust source file.",
+      "files": [],
+      "assertions": [
         {
-          "text": "Response includes a '### Control Flow' section",
-          "description": "CFG analysis must appear and describe the updated event-dispatch control flow"
+          "text": "Response does NOT contain a '## Post-Edit:' header",
+          "description": "Editing a .sh shell script must not trigger loci-post-edit — only C/C++/Rust file edits auto-invoke the skill"
         }
       ]
     }

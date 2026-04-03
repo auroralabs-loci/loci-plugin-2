@@ -103,6 +103,15 @@ BLE_ROOT="$(cd "$BLE_ROOT" && pwd)"
 
 echo "BLE root: $BLE_ROOT"
 
+# Restore BLE project to a clean git state so previous eval runs that modified
+# source files do not invalidate subsequent evals.
+if git -C "$BLE_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if ! git -C "$BLE_ROOT" diff --quiet 2>/dev/null; then
+    echo "Restoring BLE project to clean state (uncommitted changes detected)..."
+    git -C "$BLE_ROOT" restore . 2>/dev/null || true
+  fi
+fi
+
 # Check for the primary test ELF
 BLE_ELF="$BLE_ROOT/$BLE_BASIC_BLE"
 if [[ ! -f "$BLE_ELF" ]]; then
@@ -118,8 +127,7 @@ RESULTS_DIR="$SCRIPT_DIR/eval-results/$TIMESTAMP"
 mkdir -p "$RESULTS_DIR"
 
 MCP_CONFIG=""
-PLUGIN_MCP_JSON="$(find ~/.claude/plugins/cache/loci -name marketplace.json 2>/dev/null | sort -V | tail -1)"
-[[ -z "$PLUGIN_MCP_JSON" ]] && PLUGIN_MCP_JSON="$(find ~/.claude/plugins/cache/loci -name plugin.json 2>/dev/null | sort -V | tail -1)"
+
 if [[ -n "${LOCI_MCP_TOKEN:-}" ]]; then
   MCP_CONFIG="$RESULTS_DIR/.mcp-config.json"
   cat > "$MCP_CONFIG" <<EOF
@@ -134,21 +142,11 @@ if [[ -n "${LOCI_MCP_TOKEN:-}" ]]; then
 }
 EOF
   echo "MCP: authenticated (token provided)"
-elif [[ -z "${ANTHROPIC_API_KEY:-}" && -n "$PLUGIN_MCP_JSON" ]]; then
-  # Browser OAuth: reuse the plugin's MCP config (no Bearer token needed —
-  # Claude's OAuth session authenticates with the MCP server directly).
-  MCP_CONFIG="$RESULTS_DIR/.mcp-config.json"
-  $PYTHON -c "
-import json
-with open('$PLUGIN_MCP_JSON') as f:
-    p = json.load(f)
-# marketplace.json: servers nested under plugins[0].mcpServers
-# plugin.json: servers at top-level mcpServers
-servers = p.get('mcpServers') or next((pl.get('mcpServers', {}) for pl in p.get('plugins', [])), {})
-print(json.dumps({'mcpServers': servers}, indent=2))
-" > "$MCP_CONFIG"
-  echo "MCP: using plugin config (OAuth session auth)"
 else
+  # No service token — do not pass any MCP config. claude -p cannot complete
+  # browser OAuth interactively, so passing an unauthenticated MCP endpoint
+  # would cause the model to stall on an OAuth prompt instead of using the
+  # skill's fallback path (timing/energy unavailable).
   echo "MCP: skipped (LOCI_MCP_TOKEN not set — skills will use fallback paths)"
 fi
 
@@ -176,7 +174,9 @@ echo ""
 # Build session context that evals expect to be present
 # ---------------------------------------------------------------------------
 SESSION_CONTEXT="BLE project root: $BLE_ROOT
-Primary test ELF: $BLE_ELF"
+Primary test ELF: $BLE_ELF
+Target: armv6-m, Compiler: tiarmclang, Build: ticlang
+LOCI target: armv6-m"
 
 # ---------------------------------------------------------------------------
 # print_error_detail — structured diagnostics for ERROR outcomes
@@ -270,27 +270,50 @@ print_error_detail() {
 # grade_bash — deterministic Bash-based grader for should_trigger tests
 #   $1: response text
 #   $2: should_trigger ("true" | "false")
+#   $3: expectations text (newline-separated assertion strings from evals.json)
 #   Writes "PASS|reason" or "FAIL|reason" to stdout
+#
+# Checks that are common to ALL trigger evals are always enforced.
+# Checks for 'Call graph' and 'Latency' are only enforced when the eval's
+# assertions explicitly require them (detected via $3), so evals that don't
+# assert those sections (e.g. pf-critical-7, pf-critical-8) are not penalised.
 # ---------------------------------------------------------------------------
 grade_bash() {
   local RESPONSE="$1"
   local SHOULD_TRIGGER="$2"
+  local EXPECTATIONS="${3:-}"
 
   if [[ "$SHOULD_TRIGGER" == "true" ]]; then
     if ! echo "$RESPONSE" | grep -qiE '##[[:space:]]*preflight|preflight[[:space:]]+analysis'; then
       echo "FAIL|missing Preflight header"; return
     fi
-    if ! echo "$RESPONSE" | grep -qiE 'call[[:space:].-]*graph'; then
-      echo "FAIL|missing Call graph section"; return
+    # CFG Analysis section — required by every trigger eval
+    if ! echo "$RESPONSE" | grep -qiE '###[[:space:]]*CFG[[:space:]]+Analysis'; then
+      echo "FAIL|missing CFG Analysis section"; return
     fi
-    if ! echo "$RESPONSE" | grep -qiE 'latency'; then
-      echo "FAIL|missing Latency section"; return
+    if ! echo "$RESPONSE" | grep -qiE 'Missing declarations:'; then
+      echo "FAIL|missing 'Missing declarations:' in CFG Analysis"; return
     fi
-    if ! echo "$RESPONSE" | grep -qiE 'arithmetic'; then
-      echo "FAIL|missing Arithmetic section"; return
+    if ! echo "$RESPONSE" | grep -qiE 'Indirect calls:'; then
+      echo "FAIL|missing 'Indirect calls:' in CFG Analysis"; return
     fi
-    if ! echo "$RESPONSE" | grep -qiE 'resource'; then
-      echo "FAIL|missing Resources section"; return
+    if ! echo "$RESPONSE" | grep -qiE 'Recursion(/cycles)?:'; then
+      echo "FAIL|missing 'Recursion/cycles:' in CFG Analysis"; return
+    fi
+    # Call graph — only check when the eval's assertions require it
+    if echo "$EXPECTATIONS" | grep -qi "call graph"; then
+      if ! echo "$RESPONSE" | grep -qiE 'call[[:space:].-]*graph'; then
+        echo "FAIL|missing Call graph section"; return
+      fi
+    fi
+    # Latency — only check when the eval's assertions require it
+    if echo "$EXPECTATIONS" | grep -qi "latency"; then
+      if ! echo "$RESPONSE" | grep -qiE 'latency'; then
+        echo "FAIL|missing Latency section"; return
+      fi
+    fi
+    if ! echo "$RESPONSE" | grep -qiE 'energy'; then
+      echo "FAIL|missing Energy section"; return
     fi
     if ! echo "$RESPONSE" | grep -qiE 'execution[[:space:].-]*fit'; then
       echo "FAIL|missing Execution fit section"; return
@@ -298,7 +321,7 @@ grade_bash() {
     if ! echo "$RESPONSE" | grep -qiE 'GOOD|ADJUST PLAN|STOP'; then
       echo "FAIL|missing GOOD/ADJUST PLAN/STOP verdict"; return
     fi
-    echo "PASS|all required preflight sections present"
+    echo "PASS|all required preflight sections present (CFG analysis, energy, execution fit)"
   else
     if echo "$RESPONSE" | grep -qiE '##[[:space:]]*preflight|preflight[[:space:]]+analysis'; then
       echo "FAIL|should not have triggered but contains Preflight header"; return
@@ -330,8 +353,10 @@ grade_bash_post_edit() {
     if ! echo "$RESPONSE" | grep -qiE 'worst[[:space:]]+path[[:space:]]*:'; then
       echo "FAIL|missing Worst path line"; return
     fi
-    if ! echo "$RESPONSE" | grep -qiE 'diff|%'; then
-      echo "FAIL|missing Diff column or % diff value"; return
+    # Accept either: % diff values (pre+post comparison format) or the
+    # absolute-only indicator defined in SKILL.md for the no-pre-edit case.
+    if ! echo "$RESPONSE" | grep -qiE 'diff|%|no pre-edit'; then
+      echo "FAIL|missing Diff column, % diff value, or absolute-only indicator"; return
     fi
     if ! echo "$RESPONSE" | grep -qiE '###[[:space:]]*control[[:space:]]+flow'; then
       echo "FAIL|missing Control Flow section"; return
@@ -375,9 +400,27 @@ run_one_eval() {
   local LOG_FILE="$RESULTS_DIR/${SKILL_NAME}_eval${EVAL_ID}_log.txt"
   local MASTER_LOG="$RESULTS_DIR/master.log"
 
-  # Strip leading slash commands (/plan, /review, etc.) — they are
-  # interactive-session affordances that don't work in claude -p.
-  PROMPT=$(echo "$PROMPT" | sed 's|^/[a-zA-Z_-]* ||')
+  # Detect /plan prefix — maps to --permission-mode plan in claude -p.
+  # Strip /plan from the prompt (the CLI would intercept it as a slash command
+  # lookup and return "Unknown skill: plan").  Instead, inject an explicit
+  # plan-mode note into the system prompt so SKILL.md trigger conditions work:
+  # --dangerously-skip-permissions overrides --permission-mode plan (the model
+  # sees permissionMode: bypassPermissions), so the model cannot infer plan
+  # mode from its permission context alone.
+  local USE_PLAN_MODE=false
+  if [[ "$PROMPT" =~ ^/plan[[:space:]] ]]; then
+    USE_PLAN_MODE=true
+    PROMPT="${PROMPT#/plan }"
+    # Append plan-mode context to the system prompt so the model knows this is
+    # a /plan mode request and must invoke plan-gated skills (e.g. preflight).
+    SYSTEM_PROMPT="${SYSTEM_PROMPT}
+
+CURRENT REQUEST MODE: The user invoked this request with /plan mode. You are in plan mode — analyze and plan only, do not edit files. Skills that are mandatory in /plan mode MUST be invoked."
+  else
+    # Strip other leading slash commands (/review, etc.) — they are
+    # interactive-session affordances that don't work in claude -p.
+    PROMPT=$(echo "$PROMPT" | sed 's|^/[a-zA-Z_-]* ||')
+  fi
 
   # log_eval: writes to both the per-eval log and master log.
   # In verbose mode, also writes to stderr (which reaches the terminal).
@@ -397,6 +440,7 @@ run_one_eval() {
 
   log_eval "START  $TAG"
   log_eval "Prompt: ${PROMPT:0:120}..."
+  $USE_PLAN_MODE && log_eval "Plan mode: ON (--permission-mode plan)"
   echo "${PROG_PFX} START    ${TAG}" >> "$PROGRESS_LOG"
 
   # ── Step 1: Run the eval prompt ────────────────────────────
@@ -404,6 +448,13 @@ run_one_eval() {
   # NOTE: --bare disables OAuth/keychain auth — only use it when ANTHROPIC_API_KEY
   # is set (API billing). With browser-based OAuth, omit --bare so auth works.
   local CLAUDE_ARGS=(-p --dangerously-skip-permissions)
+  if $USE_PLAN_MODE; then
+    CLAUDE_ARGS+=(--permission-mode plan)
+    # Prevent the model from writing to source files in plan mode.
+    # --dangerously-skip-permissions overrides plan mode's write restriction, so
+    # explicitly disallow Edit/Write to protect the BLE project from modification.
+    CLAUDE_ARGS+=(--disallowedTools "Edit Write MultiEdit NotebookEdit")
+  fi
   if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
     CLAUDE_ARGS+=(--bare)
   fi
@@ -535,7 +586,7 @@ run_one_eval() {
     if [[ "$SKILL_NAME" == "loci-post-edit" ]]; then
       BASH_VERDICT=$(grade_bash_post_edit "$RESPONSE" "$SHOULD_TRIGGER")
     else
-      BASH_VERDICT=$(grade_bash "$RESPONSE" "$SHOULD_TRIGGER")
+      BASH_VERDICT=$(grade_bash "$RESPONSE" "$SHOULD_TRIGGER" "$EXPECTATIONS")
     fi
     echo "$BASH_VERDICT" > "$GRADE_FILE"
     VERDICT="${BASH_VERDICT%%|*}"
@@ -660,10 +711,19 @@ for EVAL_FILE in $EVAL_FILES; do
   SKILL_MD="$SKILL_DIR/SKILL.md"
   SYSTEM_PROMPT=""
   if [[ -f "$SKILL_MD" ]]; then
+    # post-edit evals target armv7e-m (Cortex-M4); override the global SESSION_CONTEXT
+    # which defaults to armv6-m for preflight evals.
+    SKILL_SESSION_CONTEXT="$SESSION_CONTEXT"
+    if [[ "$SKILL_NAME" == "loci-post-edit" ]]; then
+      SKILL_SESSION_CONTEXT="BLE project root: $BLE_ROOT
+Primary test ELF: $BLE_ELF
+Target: armv7e-m, Compiler: arm-none-eabi-gcc, Build: ticlang
+LOCI target: armv7e-m"
+    fi
     SYSTEM_PROMPT="You are running a skill eval. Follow the skill instructions below EXACTLY.
 
 --- SESSION CONTEXT ---
-$SESSION_CONTEXT
+$SKILL_SESSION_CONTEXT
 --- END SESSION CONTEXT ---
 
 --- SKILL INSTRUCTIONS ---
@@ -751,6 +811,7 @@ RUNNING=0
 declare -a PIDS=()
 
 for (( j=0; j<TOTAL; j++ )); do
+  $VERBOSE && echo -e "${CYAN}[eval]${NC} ${JOB_SKILLS[$j]} / ${JOB_IDS[$j]}"
   run_one_eval \
     "${JOB_SKILLS[$j]}" \
     "${JOB_IDS[$j]}" \

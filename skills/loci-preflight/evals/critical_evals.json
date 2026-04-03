@@ -10,12 +10,32 @@
       "grading_mode": "bash",
 
       "prompt": "/plan Implement a guard in ClockP_construct in $LOCI_TEST_BLE_ROOT/kernel/freertos/dpl/ClockP_freertos.c so it returns NULL immediately if clockFxn is NULL, before any timer setup occurs.",
-      "expected_output": "A preflight block appears before any implementation plan or code and includes all required sections: Call graph, Latency, Arithmetic, Resources, and Execution fit.",
+      "expected_output": "A preflight block appears before any implementation plan or code and includes all required sections: Execution (per-callee worst/energy), CFG Analysis (Missing declarations, Indirect calls, Recursion/cycles), Call graph, Latency, Energy, and Execution fit.",
       "files": [],
       "assertions": [
         {
           "text": "Response includes a '## Preflight:' section header",
           "description": "'Implement' must trigger the skill"
+        },
+        {
+          "text": "Preflight block contains a '### Execution' section with per-callee timing",
+          "description": "Required preflight section — per-callee worst-path and energy breakdown"
+        },
+        {
+          "text": "Preflight block contains a '### CFG Analysis' section",
+          "description": "Required preflight section — structural CFG hazard analysis"
+        },
+        {
+          "text": "Preflight '### CFG Analysis' section contains 'Missing declarations:' line",
+          "description": "Required CFG Analysis sub-check per SKILL.md"
+        },
+        {
+          "text": "Preflight '### CFG Analysis' section contains 'Indirect calls:' line",
+          "description": "Required CFG Analysis sub-check per SKILL.md"
+        },
+        {
+          "text": "Preflight '### CFG Analysis' section contains 'Recursion/cycles:' line",
+          "description": "Required CFG Analysis sub-check per SKILL.md"
         },
         {
           "text": "Preflight block contains a 'Call graph:' line",
@@ -41,12 +61,32 @@
       "category": "invoke-plan-mode-modify-clockp-stop",
       "grading_mode": "bash",
       "prompt": "/plan How should I modify ClockP_stop in $LOCI_TEST_BLE_ROOT/kernel/freertos/dpl/ClockP_freertos.c so it returns immediately without calling the FreeRTOS timer API if the clock was never started?",
-      "expected_output": "A preflight block with all required sections appears before the modification plan.",
+      "expected_output": "A preflight block with all required sections (Execution with per-callee breakdown, CFG Analysis with Missing declarations/Indirect calls/Recursion cycles, Call graph, Latency, Energy, and Execution fit) appears before the modification plan.",
       "files": [],
       "assertions": [
         {
           "text": "Response includes a '## Preflight:' section header",
           "description": "'How should I modify' must trigger the skill"
+        },
+        {
+          "text": "Preflight block contains a '### Execution' section with per-callee timing",
+          "description": "Required preflight section — per-callee worst-path and energy breakdown"
+        },
+        {
+          "text": "Preflight block contains a '### CFG Analysis' section",
+          "description": "Required preflight section — structural CFG hazard analysis"
+        },
+        {
+          "text": "Preflight '### CFG Analysis' section contains 'Missing declarations:' line",
+          "description": "Required CFG Analysis sub-check per SKILL.md"
+        },
+        {
+          "text": "Preflight '### CFG Analysis' section contains 'Indirect calls:' line",
+          "description": "Required CFG Analysis sub-check per SKILL.md"
+        },
+        {
+          "text": "Preflight '### CFG Analysis' section contains 'Recursion/cycles:' line",
+          "description": "Required CFG Analysis sub-check per SKILL.md"
         },
         {
           "text": "Preflight block contains a 'Call graph:' line",
@@ -132,7 +172,7 @@
       "category": "invoke-plan-mode-write-connection-getconnindex",
       "grading_mode": "bash",
       "prompt": "/plan Write a bounds guard at the top of Connection_getConnIndex in $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R53/ble5stack/basic_ble_profiles/app/app_connection.c that returns -1 immediately if the connection handle is greater than or equal to MAX_NUM_BLE_CONNS, so callers never index out of bounds on the connection table. The function is compiled into $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out.",
-      "expected_output": "A preflight block with all required sections appears before the implementation plan, covering the array index arithmetic and call graph for Connection_getConnIndex.",
+      "expected_output": "A preflight block with all required sections (Execution per-callee breakdown, CFG Analysis, Call graph, Latency, Energy, Execution fit) appears before the implementation plan, covering Connection_getConnIndex.",
       "files": [],
       "assertions": [
         {
@@ -140,8 +180,12 @@
           "description": "/plan + 'Write a bounds guard' must trigger the skill"
         },
         {
-          "text": "Preflight block contains an 'Arithmetic:' line",
-          "description": "Index bounds check is an arithmetic range concern — must appear in preflight"
+          "text": "Preflight block contains a '### CFG Analysis' section with 'Missing declarations:', 'Indirect calls:', and 'Recursion/cycles:' lines",
+          "description": "All three CFG Analysis sub-checks are required by SKILL.md"
+        },
+        {
+          "text": "Preflight block contains an 'Energy:' line",
+          "description": "Required preflight section — energy must be reported"
         },
         {
           "text": "Preflight block contains an 'Execution fit:' line with value GOOD, ADJUST PLAN, or STOP",
@@ -152,10 +196,10 @@
     {
       "id": "pf-critical-8",
       "should_trigger": true,
-      "category": "invoke-plan-mode-add-retry-hci-senddatapkt",
+      "category": "invoke-plan-mode-add-conn-guard-hci-senddatapkt",
       "grading_mode": "bash",
-      "prompt": "/plan Add a retry loop inside HCI_SendDataPkt in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/hci/cc26xx/hci.c that retries up to 3 times if the connection handle lookup returns invalid, doubling the backoff interval on each attempt up to a cap of 500ms. The function is compiled into $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out.",
-      "expected_output": "A preflight block covering arithmetic (overflow risk on doubling the backoff interval) and call graph for HCI_SendDataPkt, before the implementation plan.",
+      "prompt": "/plan Add a live-connection guard at the top of HCI_SendDataPkt in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/source/ti/ble5stack_flash/hci/cc26xx/hci.c that calls LL_ConnActive to verify the connection handle refers to a live connection before any data transmission, returning HCI_ERROR_CODE_UNKNOWN_CONN_IDENTIFIER immediately if it does not. The function is compiled into $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out.",
+      "expected_output": "A preflight block covering Execution (per-callee timing/energy), CFG Analysis (Missing declarations, Indirect calls, Recursion/cycles), Call graph, Latency, Energy, and Execution fit for HCI_SendDataPkt, before the implementation plan.",
       "files": [],
       "assertions": [
         {
@@ -163,8 +207,12 @@
           "description": "/plan + 'Add a retry loop' must trigger the skill"
         },
         {
-          "text": "Preflight block contains an 'Arithmetic:' line",
-          "description": "Doubling a backoff interval is a classic overflow/range risk — must appear in preflight"
+          "text": "Preflight block contains a '### CFG Analysis' section with 'Missing declarations:', 'Indirect calls:', and 'Recursion/cycles:' lines",
+          "description": "All three CFG Analysis sub-checks are required by SKILL.md"
+        },
+        {
+          "text": "Preflight block contains an 'Energy:' line",
+          "description": "Required preflight section — energy must be reported"
         },
         {
           "text": "Preflight block contains an 'Execution fit:' line with value GOOD, ADJUST PLAN, or STOP",

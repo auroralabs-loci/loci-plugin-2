@@ -1,0 +1,82 @@
+{
+  "skill_name": "loci-post-edit",
+  "description": "Critical smoke tests for loci-post-edit. Validates only invoke / no-invoke behavior. Designed for cheap, deterministic grading.",
+  "note": "Set $LOCI_TEST_BLE_ROOT to your local BLE project root before running.",
+  "evals": [
+    {
+      "id": "pe-critical-1",
+      "should_trigger": true,
+      "category": "invoke-analyze-the-change",
+      "grading_mode": "bash",
+      "prompt": "Analyze the change I just made to Connection_getConnhandle in $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R53/ble5stack/basic_ble_profiles/app/app_connection.c. Pre-edit object: $LOCI_TEST_BLE_ROOT/.loci-build/cortexm/app_connection_before.o, post-edit object: $LOCI_TEST_BLE_ROOT/.loci-build/cortexm/app_connection_after.o. The binary is at $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out. Session context: Target: armv7e-m, Compiler: arm-none-eabi-gcc, LOCI target: armv7e-m.",
+      "expected_output": "Invokes loci-post-edit and emits a Post-Edit report for Connection_getConnhandle.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Response includes a '## Post-Edit:' section header",
+          "description": "'Analyze the change' with pre/post .o artifacts must trigger loci-post-edit"
+        }
+      ]
+    },
+    {
+      "id": "pe-critical-2",
+      "should_trigger": true,
+      "category": "invoke-measure-the-edit",
+      "grading_mode": "bash",
+      "prompt": "Measure the edit to ClockP_walkQueueDynamic in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/kernel/freertos/dpl/ClockPLPF3_freertos.c. Pre-edit object: $LOCI_TEST_BLE_ROOT/.loci-build/cortexm/clock_before.o, post-edit object: $LOCI_TEST_BLE_ROOT/.loci-build/cortexm/clock_after.o. The binary is at $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out. Session context: Target: armv7e-m, Compiler: arm-none-eabi-gcc, LOCI target: armv7e-m.",
+      "expected_output": "Invokes loci-post-edit and emits a Post-Edit report for ClockP_walkQueueDynamic.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Response includes a '## Post-Edit:' section header",
+          "description": "'Measure the edit' with pre/post .o artifacts must trigger loci-post-edit"
+        }
+      ]
+    },
+    {
+      "id": "pe-critical-3",
+      "should_trigger": true,
+      "category": "invoke-run-post-edit-analysis",
+      "grading_mode": "bash",
+      "prompt": "Run post-edit analysis on Connection_ConnEventHandler in $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R53/ble5stack/basic_ble_profiles/app/app_connection.c. Pre-edit object: $LOCI_TEST_BLE_ROOT/.loci-build/cortexm/app_connection_before.o, post-edit object: $LOCI_TEST_BLE_ROOT/.loci-build/cortexm/app_connection_after_new.o. The binary is at $LOCI_TEST_BLE_ROOT/CC2340R5/basic_ble.out. Session context: Target: armv7e-m, Compiler: arm-none-eabi-gcc, LOCI target: armv7e-m.",
+      "expected_output": "Invokes loci-post-edit and emits a Post-Edit report for Connection_ConnEventHandler.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Response includes a '## Post-Edit:' section header",
+          "description": "'Run post-edit analysis' with pre/post .o artifacts must trigger loci-post-edit"
+        }
+      ]
+    },
+    {
+      "id": "pe-critical-4",
+      "should_trigger": false,
+      "category": "no-invoke-explain-function",
+      "grading_mode": "bash",
+      "prompt": "Explain what Connection_getConnhandle does in $LOCI_TEST_BLE_ROOT/examples/rtos/LP_EM_CC2340R53/ble5stack/basic_ble_profiles/app/app_connection.c and when it returns 0xFFFF.",
+      "expected_output": "A plain explanation with no Post-Edit report. No code change is intended — the skill must stay silent.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Response does NOT contain a '## Post-Edit:' header",
+          "description": "User is asking for an explanation only — no edit has occurred, skill must not fire"
+        }
+      ]
+    },
+    {
+      "id": "pe-critical-5",
+      "should_trigger": false,
+      "category": "no-invoke-review-without-changes",
+      "grading_mode": "bash",
+      "prompt": "Review ClockP_walkQueueDynamic in $LOCI_TEST_BLE_ROOT/simplelink-lowpower-f3-sdk/kernel/freertos/dpl/ClockPLPF3_freertos.c for potential timing issues. Don't change anything yet — just tell me what you find.",
+      "expected_output": "A code review with no Post-Edit report. 'Don't change anything yet' is explicit analysis mode — the skill must stay silent.",
+      "files": [],
+      "assertions": [
+        {
+          "text": "Response does NOT contain a '## Post-Edit:' header",
+          "description": "User explicitly requested no changes — no edit has occurred, skill must not fire"
+        }
+      ]
+    }
+  ]
+}
