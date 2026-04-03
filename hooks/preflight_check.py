@@ -126,9 +126,9 @@ def find_new_functions(code: str) -> list[tuple[str, list[str]]]:
 
 def render_report(func_name: str, findings: list[Finding]) -> str:
     if not findings:
-        return f"[loci-preflight] {func_name}: all clear"
+        return f"[loci · pre-scan] {func_name}: call graph clean"
 
-    lines = [f"[loci-preflight] {func_name}"]
+    lines = [f"[loci · pre-scan] {func_name}"]
     sections = {"call_graph": []}
     for f in findings:
         sections[f.check].append(f)
