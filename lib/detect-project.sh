@@ -149,6 +149,49 @@ find_asm_files() {
   find "$CWD" -maxdepth 2 \( -name "*.asm" -o -name "*.s" -o -name "*.S" \) 2>/dev/null | head -20 | jq -R . | jq -s .
 }
 
+# Locate a working readelf binary (system or cross-toolchain)
+_find_readelf() {
+  local candidates=(readelf arm-none-eabi-readelf aarch64-linux-gnu-readelf tricore-elf-readelf)
+  for re in "${candidates[@]}"; do
+    if command -v "$re" >/dev/null 2>&1; then
+      echo "$re"
+      return
+    fi
+  done
+  # Windows: check well-known install directories
+  if $IS_WINDOWS; then
+    for candidate in \
+      /c/ti/gcc-arm-none-eabi/bin/arm-none-eabi-readelf.exe \
+      "/c/Program Files/GNU Arm Embedded Toolchain"*/bin/arm-none-eabi-readelf.exe \
+      "/c/Program Files (x86)/GNU Arm Embedded Toolchain"*/bin/arm-none-eabi-readelf.exe; do
+      if [ -x "$candidate" ]; then
+        echo "$candidate"
+        return
+      fi
+    done
+  fi
+  return 1
+}
+
+# Probe ARM ELF build attributes to determine specific ISA (armv6-m vs armv7e-m).
+# Returns the ISA string or fails if readelf unavailable or attributes unreadable.
+_arm_isa_from_elf() {
+  local elf_path="$1"
+  local re
+  re=$(_find_readelf) || return 1
+  local attrs
+  attrs=$("$re" -A "$elf_path" 2>/dev/null) || return 1
+  # Tag_CPU_arch values: v6-M (M0/M0+), v7E-M (M4/M7), v7 (A-class), v8-A, etc.
+  local cpu_arch
+  cpu_arch=$(echo "$attrs" | grep -oP 'Tag_CPU_arch:\s*\K\S+' | head -1)
+  case "$cpu_arch" in
+    v6-M)    echo "armv6-m" ;;
+    v7E-M)   echo "armv7e-m" ;;
+    v7-M)    echo "armv7-m" ;;
+    *)       return 1 ;;  # unknown or A-class — let caller handle
+  esac
+}
+
 # Detect architecture from an ELF file using `file` command
 arch_from_elf() {
   local elf_path="$1"
@@ -158,7 +201,9 @@ arch_from_elf() {
   if echo "$file_output" | grep -qiE 'aarch64|ARM aarch64|ARM 64'; then
     echo "aarch64"
   elif echo "$file_output" | grep -qiE 'ARM,.*EABI|Thumb|Cortex|armv7|arm,'; then
-    echo "arm"
+    # ARM detected — try to refine to specific ISA via ELF attributes
+    local isa
+    isa=$(_arm_isa_from_elf "$elf_path") && echo "$isa" || echo "arm"
   elif echo "$file_output" | grep -qiE 'TriCore|tricore'; then
     echo "tricore"
   elif echo "$file_output" | grep -qiE 'x86.64|x86-64|AMD64'; then
@@ -249,6 +294,10 @@ resolve_loci_target() {
   case "$lower_arch" in
     aarch64|arm64)
       generic="aarch64" ;;
+    armv6-m)
+      echo "armv6-m" && return ;;
+    armv7e-m|armv7-m)
+      echo "armv7e-m" && return ;;
     arm|armv7*|cortex-m*|thumb)
       generic="cortexm" ;;
     tricore|tc3*|tc39*)

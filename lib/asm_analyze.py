@@ -133,6 +133,8 @@ ARCH_ALIASES = {
     "cortex-m": "cortexm",
     "cortex-m4": "cortexm",
     "armv7e-m": "cortexm",
+    "armv6-m": "cortexm",
+    "armv7-m": "cortexm",
     "thumb": "cortexm",
     "tricore": "tricore",
     "tc399": "tricore",
