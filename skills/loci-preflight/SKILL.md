@@ -118,9 +118,10 @@ etc. Use the compiler and target detected in Step 0.
 
 1. If a previous `.o` exists for the source file, save it as `.o.prev`
    (this enables delta reporting in Step 3).
-2. Compile only the relevant source file with `-c`:
+2. Compile only the relevant source file with `-c`.
+   Always include `-g` to emit DWARF debug info (required by asm-analyze):
    ```
-   <compiler> <flags> -c <source> -o <basename>.o
+   <compiler> -g <flags> -c <source> -o <basename>.o
    ```
 
 **Secondary path: existing binary**

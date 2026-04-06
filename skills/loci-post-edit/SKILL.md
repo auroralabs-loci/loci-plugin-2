@@ -78,9 +78,10 @@ Check build output directories from the project's build system, not just the
 source directory.
 
 If no post-edit `.o` exists, compile the edited source with `-c` using the
-compiler and flags from step 0 (same as preflight Step 1):
+compiler and flags from step 0 (same as preflight Step 1).
+Always include `-g` to emit DWARF debug info (required by asm-analyze):
 ```
-<compiler> <flags> -c <source> -o <basename>.o
+<compiler> -g <flags> -c <source> -o <basename>.o
 ```
 
 For the pre-edit artifact: the preflight hook saves `<name>.o.prev`
