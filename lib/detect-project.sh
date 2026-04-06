@@ -149,27 +149,38 @@ find_asm_files() {
   find "$CWD" -maxdepth 2 \( -name "*.asm" -o -name "*.s" -o -name "*.S" \) 2>/dev/null | head -20 | jq -R . | jq -s .
 }
 
-# Locate a working readelf binary (system or cross-toolchain)
+# Locate a working readelf binary (system, cross-toolchain, or vendor)
 _find_readelf() {
-  local candidates=(readelf arm-none-eabi-readelf aarch64-linux-gnu-readelf tricore-elf-readelf)
+  local candidates=(readelf arm-none-eabi-readelf aarch64-linux-gnu-readelf tricore-elf-readelf tiarmreadelf)
   for re in "${candidates[@]}"; do
     if command -v "$re" >/dev/null 2>&1; then
       echo "$re"
       return
     fi
   done
-  # Windows: check well-known install directories
+  # Not on PATH — search well-known vendor install directories
+  local search_dirs=()
   if $IS_WINDOWS; then
-    for candidate in \
-      /c/ti/gcc-arm-none-eabi/bin/arm-none-eabi-readelf.exe \
-      "/c/Program Files/GNU Arm Embedded Toolchain"*/bin/arm-none-eabi-readelf.exe \
-      "/c/Program Files (x86)/GNU Arm Embedded Toolchain"*/bin/arm-none-eabi-readelf.exe; do
-      if [ -x "$candidate" ]; then
-        echo "$candidate"
-        return
-      fi
-    done
+    search_dirs=(
+      /c/ti/gcc-arm-none-eabi/bin/arm-none-eabi-readelf.exe
+      "/c/Program Files/GNU Arm Embedded Toolchain"*/bin/arm-none-eabi-readelf.exe
+      "/c/Program Files (x86)/GNU Arm Embedded Toolchain"*/bin/arm-none-eabi-readelf.exe
+      /c/ti/ticlang/bin/tiarmreadelf.exe
+      /c/ti/ccs*/tools/compiler/ti-cgt-armllvm_*/bin/tiarmreadelf.exe
+      /c/ti/ti-cgt-armllvm_*/bin/tiarmreadelf.exe
+    )
+  else
+    search_dirs=(
+      /opt/ti/clang/ti-cgt-armllvm_*/bin/tiarmreadelf
+      "$HOME/ti/ti-cgt-armllvm_"*/bin/tiarmreadelf
+    )
   fi
+  for candidate in "${search_dirs[@]}"; do
+    if [ -x "$candidate" ]; then
+      echo "$candidate"
+      return
+    fi
+  done
   return 1
 }
 
@@ -181,14 +192,18 @@ _arm_isa_from_elf() {
   re=$(_find_readelf) || return 1
   local attrs
   attrs=$("$re" -A "$elf_path" 2>/dev/null) || return 1
-  # Tag_CPU_arch values: v6-M (M0/M0+), v7E-M (M4/M7), v7 (A-class), v8-A, etc.
+  # Extract CPU_arch from either format (no grep -P for macOS compat):
+  #   standard readelf:   Tag_CPU_arch: v6S-M
+  #   tiarmreadelf:       Description: ARM v6S-M
   local cpu_arch
-  cpu_arch=$(echo "$attrs" | grep -oP 'Tag_CPU_arch:\s*\K\S+' | head -1)
+  cpu_arch=$(echo "$attrs" | sed -n 's/.*Tag_CPU_arch:[[:space:]]*\([^ ]*\).*/\1/p' | head -1)
+  [ -z "$cpu_arch" ] && \
+    cpu_arch=$(echo "$attrs" | grep -A1 'TagName: CPU_arch' | sed -n 's/.*Description:[[:space:]]*ARM[[:space:]]*\([^ ]*\).*/\1/p' | head -1)
   case "$cpu_arch" in
-    v6-M)    echo "armv6-m" ;;
-    v7E-M)   echo "armv7e-m" ;;
-    v7-M)    echo "armv7-m" ;;
-    *)       return 1 ;;  # unknown or A-class — let caller handle
+    v6-M|v6S-M)  echo "armv6-m" ;;
+    v7E-M)       echo "armv7e-m" ;;
+    v7-M)        echo "armv7-m" ;;
+    *)           return 1 ;;  # unknown or A-class — let caller handle
   esac
 }
 
