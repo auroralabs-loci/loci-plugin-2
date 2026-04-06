@@ -149,6 +149,64 @@ find_asm_files() {
   find "$CWD" -maxdepth 2 \( -name "*.asm" -o -name "*.s" -o -name "*.S" \) 2>/dev/null | head -20 | jq -R . | jq -s .
 }
 
+# Locate a working readelf binary (system, cross-toolchain, or vendor)
+_find_readelf() {
+  local candidates=(readelf arm-none-eabi-readelf aarch64-linux-gnu-readelf tricore-elf-readelf tiarmreadelf)
+  for re in "${candidates[@]}"; do
+    if command -v "$re" >/dev/null 2>&1; then
+      echo "$re"
+      return
+    fi
+  done
+  # Not on PATH — search well-known vendor install directories
+  local search_dirs=()
+  if $IS_WINDOWS; then
+    search_dirs=(
+      /c/ti/gcc-arm-none-eabi/bin/arm-none-eabi-readelf.exe
+      "/c/Program Files/GNU Arm Embedded Toolchain"*/bin/arm-none-eabi-readelf.exe
+      "/c/Program Files (x86)/GNU Arm Embedded Toolchain"*/bin/arm-none-eabi-readelf.exe
+      /c/ti/ticlang/bin/tiarmreadelf.exe
+      /c/ti/ccs*/tools/compiler/ti-cgt-armllvm_*/bin/tiarmreadelf.exe
+      /c/ti/ti-cgt-armllvm_*/bin/tiarmreadelf.exe
+    )
+  else
+    search_dirs=(
+      /opt/ti/clang/ti-cgt-armllvm_*/bin/tiarmreadelf
+      "$HOME/ti/ti-cgt-armllvm_"*/bin/tiarmreadelf
+    )
+  fi
+  for candidate in "${search_dirs[@]}"; do
+    if [ -x "$candidate" ]; then
+      echo "$candidate"
+      return
+    fi
+  done
+  return 1
+}
+
+# Probe ARM ELF build attributes to determine specific ISA (armv6-m vs armv7e-m).
+# Returns the ISA string or fails if readelf unavailable or attributes unreadable.
+_arm_isa_from_elf() {
+  local elf_path="$1"
+  local re
+  re=$(_find_readelf) || return 1
+  local attrs
+  attrs=$("$re" -A "$elf_path" 2>/dev/null) || return 1
+  # Extract CPU_arch from either format (no grep -P for macOS compat):
+  #   standard readelf:   Tag_CPU_arch: v6S-M
+  #   tiarmreadelf:       Description: ARM v6S-M
+  local cpu_arch
+  cpu_arch=$(echo "$attrs" | sed -n 's/.*Tag_CPU_arch:[[:space:]]*\([^ ]*\).*/\1/p' | head -1)
+  [ -z "$cpu_arch" ] && \
+    cpu_arch=$(echo "$attrs" | grep -A1 'TagName: CPU_arch' | sed -n 's/.*Description:[[:space:]]*ARM[[:space:]]*\([^ ]*\).*/\1/p' | head -1)
+  case "$cpu_arch" in
+    v6-M|v6S-M)  echo "armv6-m" ;;
+    v7E-M)       echo "armv7e-m" ;;
+    v7-M)        echo "armv7-m" ;;
+    *)           return 1 ;;  # unknown or A-class — let caller handle
+  esac
+}
+
 # Detect architecture from an ELF file using `file` command
 arch_from_elf() {
   local elf_path="$1"
@@ -158,7 +216,9 @@ arch_from_elf() {
   if echo "$file_output" | grep -qiE 'aarch64|ARM aarch64|ARM 64'; then
     echo "aarch64"
   elif echo "$file_output" | grep -qiE 'ARM,.*EABI|Thumb|Cortex|armv7|arm,'; then
-    echo "arm"
+    # ARM detected — try to refine to specific ISA via ELF attributes
+    local isa
+    isa=$(_arm_isa_from_elf "$elf_path") && echo "$isa" || echo "arm"
   elif echo "$file_output" | grep -qiE 'TriCore|tricore'; then
     echo "tricore"
   elif echo "$file_output" | grep -qiE 'x86.64|x86-64|AMD64'; then
@@ -229,30 +289,47 @@ detect_cross_compilers() {
   fi
 }
 
-# Map detected architecture to LOCI target (aarch64, cortexm, tricore) or null
+# Map generic arch name to LOCI timing-backend target
+_map_to_timing_target() {
+  case "$1" in
+    cortexm)  echo "armv7e-m" ;;
+    tricore)  echo "tc3xx" ;;
+    aarch64)  echo "aarch64" ;;
+    *)        echo "$1" ;;
+  esac
+}
+
+# Map detected architecture to LOCI target (aarch64, armv7e-m, armv6-m, tc3xx) or null
 resolve_loci_target() {
   local arch="$1"
   local cross_compilers="$2"
   local lower_arch
   lower_arch=$(echo "$arch" | tr '[:upper:]' '[:lower:]')
+  local generic
   case "$lower_arch" in
     aarch64|arm64)
-      echo "aarch64" ;;
+      generic="aarch64" ;;
+    armv6-m)
+      echo "armv6-m" && return ;;
+    armv7e-m|armv7-m)
+      echo "armv7e-m" && return ;;
     arm|armv7*|cortex-m*|thumb)
-      echo "cortexm" ;;
+      generic="cortexm" ;;
     tricore|tc3*|tc39*)
-      echo "tricore" ;;
+      generic="tricore" ;;
     *)
       # Host arch is not a LOCI target — check if any cross-compiler is available
       local first
       first=$(echo "$cross_compilers" | jq -r '.[0] // empty' 2>/dev/null)
       if [ -n "$first" ]; then
-        echo "$first"
+        generic="$first"
       else
         echo "null"
+        return
       fi
       ;;
   esac
+  _map_to_timing_target "$generic"
 }
 
 # Detect compiler referenced in build configs (not necessarily in PATH)
