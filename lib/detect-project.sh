@@ -229,30 +229,43 @@ detect_cross_compilers() {
   fi
 }
 
-# Map detected architecture to LOCI target (aarch64, cortexm, tricore) or null
+# Map generic arch name to LOCI timing-backend target
+_map_to_timing_target() {
+  case "$1" in
+    cortexm)  echo "armv7e-m" ;;
+    tricore)  echo "tc3xx" ;;
+    aarch64)  echo "aarch64" ;;
+    *)        echo "$1" ;;
+  esac
+}
+
+# Map detected architecture to LOCI target (aarch64, armv7e-m, armv6-m, tc3xx) or null
 resolve_loci_target() {
   local arch="$1"
   local cross_compilers="$2"
   local lower_arch
   lower_arch=$(echo "$arch" | tr '[:upper:]' '[:lower:]')
+  local generic
   case "$lower_arch" in
     aarch64|arm64)
-      echo "aarch64" ;;
+      generic="aarch64" ;;
     arm|armv7*|cortex-m*|thumb)
-      echo "cortexm" ;;
+      generic="cortexm" ;;
     tricore|tc3*|tc39*)
-      echo "tricore" ;;
+      generic="tricore" ;;
     *)
       # Host arch is not a LOCI target — check if any cross-compiler is available
       local first
       first=$(echo "$cross_compilers" | jq -r '.[0] // empty' 2>/dev/null)
       if [ -n "$first" ]; then
-        echo "$first"
+        generic="$first"
       else
         echo "null"
+        return
       fi
       ;;
   esac
+  _map_to_timing_target "$generic"
 }
 
 # Detect compiler referenced in build configs (not necessarily in PATH)
