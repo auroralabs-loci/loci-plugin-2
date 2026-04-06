@@ -32,9 +32,9 @@ Use these defaults only when the user has no existing build:
 
 | Architecture | Compiler | Flags | Build dir |
 |---|---|---|---|
-| aarch64 | `aarch64-linux-gnu-g++` | `-O2 -march=armv8-a` | `.loci-build/aarch64/` |
-| cortexm | `arm-none-eabi-g++` | `-O2 -mcpu=cortex-m4 -mthumb` | `.loci-build/cortexm/` |
-| tricore | `tricore-elf-g++` | `-O2 -mcpu=tc3xx` | `.loci-build/tricore/` |
+| aarch64 | `aarch64-linux-gnu-g++` | `-g -O2 -march=armv8-a` | `.loci-build/aarch64/` |
+| cortexm | `arm-none-eabi-g++` | `-g -O2 -mcpu=cortex-m4 -mthumb` | `.loci-build/cortexm/` |
+| tricore | `tricore-elf-g++` | `-g -O2 -mcpu=tc3xx` | `.loci-build/tricore/` |
 
 In all steps below, replace `<arch>`, `<compiler>`, and `<flags>` with values from the resolved architecture.
 
@@ -43,9 +43,10 @@ In all steps below, replace `<arch>`, `<compiler>`, and `<flags>` with values fr
 If a previous `.o` exists in `.loci-build/<arch>/`, use incremental compilation:
 
 1. Save the existing `.o` as `.o.prev`
-2. Compile only the changed source with `-c`:
+2. Compile only the changed source with `-c`.
+   Always include `-g` to emit DWARF debug info (required by asm-analyze):
    ```
-   <compiler> <flags> -c <source> -o .loci-build/<arch>/<basename>.o
+   <compiler> -g <flags> -c <source> -o .loci-build/<arch>/<basename>.o
    ```
 3. Diff `.o.prev` vs `.o` to find changed functions:
    ```

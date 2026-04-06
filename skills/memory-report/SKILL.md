@@ -89,8 +89,9 @@ Use this when checking if a change to a single file affected memory usage.
 Works on individual `.o` object files without needing a fully linked binary.
 
 1. If a previous `.o` exists, save it as `.o.prev`
-2. Compile only the changed source with `-c`:
-       <compiler> <flags> -c <source> -o .loci-build/<arch>/<basename>.o
+2. Compile only the changed source with `-c`.
+   Always include `-g` to emit DWARF debug info (required by asm-analyze):
+       <compiler> -g <flags> -c <source> -o .loci-build/<arch>/<basename>.o
 3. Run delta comparison:
        <asm-analyze-cmd> memmap --elf-path .loci-build/<arch>/<basename>.o --comparing-elf-path .loci-build/<arch>/<basename>.o.prev
 

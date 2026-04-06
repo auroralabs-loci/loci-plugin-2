@@ -418,7 +418,10 @@ def extract_assembly(elf_path: str, functions: list[str] | None = None,
 
     asm_text = files.get("asm")
     if not asm_text:
-        return {"error": "No assembly output produced by asm-analyze"}
+        return {"error": "No assembly output produced by asm-analyze. "
+                "The most common cause is missing DWARF debug info — "
+                "ensure the object file was compiled with -g (e.g. "
+                "<compiler> -g <flags> -c <source> -o <output>)."}
 
     all_funcs = parse_functions_from_asm(asm_text)
 
