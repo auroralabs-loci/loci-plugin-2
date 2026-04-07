@@ -31,8 +31,11 @@ what function(s) you need to write and before you issue any Edit/Write call:
 4. Adjust the plan based on findings
 5. Write the code
 
-If you are in `/plan` mode or generating a step-by-step approach, include the
-preflight report as a section of the plan before listing the edit steps.
+**Plan mode:** Always emit the full preflight report (Execution, CFG Analysis,
+Execution fit, footer) in the **response text** — never inside the plan body.
+The plan body should contain only the adjusted implementation steps that
+incorporate preflight findings. The user must see the complete structured
+report in the response, not a summary buried in the plan context.
 
 ## Step 0: Check session context
 
@@ -310,9 +313,11 @@ a stable plan, emit the best candidate found and note the cycle limit was hit.
 
 ## Output format
 
-Emit the preflight report as part of your thinking, before describing what
+Emit the preflight report in the **response text**, before describing what
 you will write. Keep it short when things are clean; be specific when they
-are not.
+are not. In `/plan` mode, the report goes in the response — NOT inside the
+plan body. Always use the full structured format below with per-callee
+timings and itemized CFG checks; never condense into a single-line summary.
 
 ```
 ## Preflight: <FunctionName>
