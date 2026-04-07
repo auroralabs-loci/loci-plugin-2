@@ -25,6 +25,24 @@ class TestResolveArch:
     def test_alias_cortex_m4(self):
         assert resolve_arch("cortex-m4") == "cortexm"
 
+    def test_alias_armv8m_main(self):
+        assert resolve_arch("armv8-m.main") == "cortexm"
+
+    def test_alias_armv8m_base(self):
+        assert resolve_arch("armv8-m.base") == "cortexm"
+
+    def test_alias_cortex_m33(self):
+        assert resolve_arch("cortex-m33") == "cortexm"
+
+    def test_alias_cortex_m23(self):
+        assert resolve_arch("cortex-m23") == "cortexm"
+
+    def test_alias_cortex_m55(self):
+        assert resolve_arch("cortex-m55") == "cortexm"
+
+    def test_alias_cortex_m85(self):
+        assert resolve_arch("cortex-m85") == "cortexm"
+
     def test_alias_tc399(self):
         assert resolve_arch("tc399") == "tricore"
 
