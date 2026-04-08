@@ -200,10 +200,12 @@ _arm_isa_from_elf() {
   [ -z "$cpu_arch" ] && \
     cpu_arch=$(echo "$attrs" | grep -A1 'TagName: CPU_arch' | sed -n 's/.*Description:[[:space:]]*ARM[[:space:]]*\([^ ]*\).*/\1/p' | head -1)
   case "$cpu_arch" in
-    v6-M|v6S-M)  echo "armv6-m" ;;
-    v7E-M)       echo "armv7e-m" ;;
-    v7-M)        echo "armv7-m" ;;
-    *)           return 1 ;;  # unknown or A-class — let caller handle
+    v6-M|v6S-M)      echo "armv6-m" ;;
+    v7E-M)           echo "armv7e-m" ;;
+    v7-M)            echo "armv7-m" ;;
+    v8-M.main|v81-M) echo "armv8-m.main" ;;
+    v8-M.base)       echo "armv8-m.base" ;;
+    *)               return 1 ;;  # unknown or A-class — let caller handle
   esac
 }
 
@@ -313,7 +315,9 @@ resolve_loci_target() {
       echo "armv6-m" && return ;;
     armv7e-m|armv7-m)
       echo "armv7e-m" && return ;;
-    arm|armv7*|cortex-m*|thumb)
+    armv8-m.main|armv8-m.base)
+      echo "armv7e-m" && return ;;
+    arm|armv7*|armv8-m*|cortex-m*|thumb)
       generic="cortexm" ;;
     tricore|tc3*|tc39*)
       generic="tricore" ;;
