@@ -2,8 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from asm_analyze import _diagnose_elf
 
 ELFFILE_PATH = "elftools.elf.elffile.ELFFile"
