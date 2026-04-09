@@ -33,7 +33,7 @@
       "mcpServers": {
         "loci": {
           "type": "http",
-          "url": "https://loci.auroralabs.com/mcp/v1"
+          "url": "https://dev.local.mcp.loci-dev.net/mcp/v1"
         }
       }
     }
